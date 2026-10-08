@@ -118,4 +118,4 @@ notwindows isn't affiliated with Sikarugir, CodeWeavers or Apple.
 
 ---
 
-Big thanks to [Gcenx](https://github.com/Gcenx), creator of [Sikarugir](https://github.com/Sikarugir-App/Sikarugir). notwindows runs entirely on the engines and runtime he builds and maintains. If it's useful to you, consider [supporting his work](https://ko-fi.com/gcenx).
+Big thanks to [Gcenx](https://github.com/Gcenx), creator of [Sikarugir](https://github.com/Sikarugir-App/Sikarugir). notwindows runs entirely on the engines and runtime Gcenx builds and maintains. If it's useful to you, consider [supporting Gcenx on Ko-fi](https://ko-fi.com/gcenx).
