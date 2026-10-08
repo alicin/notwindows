@@ -18,17 +18,7 @@
 
 ![Library with a game running](docs/library-running.png)
 
-## About
-
-notwindows is an experimental front end built on top of the work of the [Sikarugir](https://github.com/Sikarugir-App/Sikarugir) project. Sikarugir does all the hard parts: it builds and maintains the Wine engines, integrates DXMT, DXVK, D9VK and D3DMetal, and ships the runtime that makes Windows games run well on macOS. notwindows just wouldn't exist without it.
-
-The only thing notwindows does differently is how it presents that stack. Sikarugir is organised around wrappers; notwindows tries a games-launcher layout instead:
-
-- **One library.** Every game appears in a grid, with artwork coloured from its own icon, playtime and when you last played.
-- **Per-game settings.** Each game has its own Windows prefix and its own settings, applied when it launches.
-- **Shared runtime.** Sikarugir's engines and renderer stack are downloaded once and used by every game.
-
-It was written quickly with an AI coding agent and hasn't been battle-tested the way Sikarugir has. If you want the mature, supported tool, use [Sikarugir](https://github.com/Sikarugir-App/Sikarugir) and support its developer on [Ko-fi](https://ko-fi.com/gcenx).
+notwindows keeps your Windows games in one library. Each game gets its own Windows prefix and its own settings for renderer, sync, display and input, and they're applied every time it launches. Wine engines and the graphics runtime are downloaded once and shared by every game.
 
 ## Screenshots
 
