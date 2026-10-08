@@ -117,7 +117,8 @@ struct WineSession {
         _ = try? await ProcessRunner.run(engine.wineserver, ["-k"], environment: environment)
     }
 
-    func winetricks(script: URL, verbs: [String], log: URL) async throws -> Int32 {
+    func startWinetricks(script: URL, verbs: [String], force: Bool, unattended: Bool, log: URL,
+                         onExit: @escaping @Sendable (Int32) -> Void) throws -> Process {
         var env = environment
         // bash is SIP-protected and drops DYLD_* before winetricks can pass them on, so Wine is reached through
         // small shims that restore the library path.
@@ -130,12 +131,16 @@ struct WineSession {
         env["WINESERVER"] = try Self.shim(named: "wineserver", target: "NOTWINDOWS_WINESERVER").path
         env["W_NO_WIN64_WARNINGS"] = "1"
         env["WINETRICKS_LATEST_VERSION_CHECK"] = "disabled"
-        return try await ProcessRunner.run(
+        var flags = ["--no-isolate"]
+        if unattended { flags.append("--unattended") }
+        if force { flags.append("--force") }
+        return try ProcessRunner.start(
             URL(fileURLWithPath: "/bin/bash"),
-            [script.path, "--unattended", "--no-isolate"] + verbs,
+            [script.path] + flags + verbs,
             environment: env,
             directory: game.driveC,
-            log: log
+            log: log,
+            onExit: onExit
         )
     }
 

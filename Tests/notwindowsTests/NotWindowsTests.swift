@@ -124,3 +124,45 @@ struct MiscTests {
         #expect(back == game)
     }
 }
+
+struct WinetricksCatalogTests {
+    @Test func parsesMetadataBlocks() {
+        let script = """
+        w_metadata vcrun2022 dlls \\
+            title="Visual C++ 2015-2022 libraries" \\
+            publisher="Microsoft" \\
+            year="2022" \\
+            media="download" \\
+            conflicts="vcrun2015 vcrun2019" \\
+            file1="vc_redist.x86.exe"
+
+        load_vcrun2022()
+        {
+            w_metadata fake notacategory
+        }
+        w_metadata vd=off settings \\
+            title_bg="something" \\
+            title="Disable virtual desktop"
+        w_metadata dotnet20sdk dlls \\
+            title=".NET SDK" \\
+            media="manual_download"
+        """
+        let verbs = WinetricksCatalog.parse(script)
+        #expect(verbs.map(\.name) == ["vcrun2022", "vd=off", "dotnet20sdk"])
+        #expect(verbs[0].title == "Visual C++ 2015-2022 libraries")
+        #expect(verbs[0].publisher == "Microsoft")
+        #expect(verbs[0].conflicts == ["vcrun2015", "vcrun2019"])
+        #expect(verbs[0].needsDownload)
+        #expect(verbs[1].category == .settings)
+        #expect(verbs[1].title == "Disable virtual desktop")
+        #expect(verbs[2].needsManualDownload)
+    }
+
+    @Test func readsInstalledVerbs() throws {
+        let prefix = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: prefix) }
+        try "w_workaround_wine_bug-53925\nwebview2\ncorefonts\nwebview2\n".write(to: prefix.appendingPathComponent("winetricks.log"), atomically: true, encoding: .utf8)
+        #expect(WinetricksCatalog.installedVerbs(in: prefix) == ["webview2", "corefonts"])
+    }
+}

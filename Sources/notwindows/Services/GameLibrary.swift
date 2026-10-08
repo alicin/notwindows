@@ -10,6 +10,20 @@ enum RunState: Equatable {
     var isRunning: Bool { if case .running = self { true } else { false } }
 }
 
+struct WinetricksJob {
+    enum Status: Equatable {
+        case preparing, running, succeeded, cancelled
+        case failed(Int32)
+    }
+
+    let verbs: [String]
+    let log: URL
+    var status: Status
+    var process: Process?
+
+    var isRunning: Bool { status == .preparing || status == .running }
+}
+
 struct AppAlert: Identifiable {
     let id = UUID()
     let title: String
@@ -26,6 +40,7 @@ final class GameLibrary {
     private(set) var backdrops: [UUID: NSImage] = [:]
     private(set) var toast: (toast: Toast, gameID: UUID?)?
     private(set) var candidates: [UUID: [ExecutableScanner.Candidate]] = [:]
+    private(set) var winetricksJobs: [UUID: WinetricksJob] = [:]
     var alert: AppAlert?
 
     let engines: EngineManager
@@ -343,21 +358,65 @@ final class GameLibrary {
         }
     }
 
-    func winetricks(_ verbs: [String], for id: UUID) async -> (status: Int32, log: URL)? {
-        guard await prepare(id), let session = session(for: id) else { return nil }
-        let log = session.game.logsDirectory.appendingPathComponent("winetricks.log")
+    func startWinetricks(_ verbs: [String], force: Bool, unattended: Bool, for id: UUID) {
+        guard !verbs.isEmpty, winetricksJobs[id]?.isRunning != true else { return }
+        let log = game(id)?.logsDirectory.appendingPathComponent("winetricks.log")
+            ?? Paths.tools.appendingPathComponent("winetricks.log")
         try? FileManager.default.removeItem(at: log)
-        states[id] = .preparing("Winetricks: \(verbs.joined(separator: " "))…")
-        defer { states[id] = .idle }
-        do {
-            let script = try await runtime.winetricksScript()
-            let status = try await session.winetricks(script: script, verbs: verbs, log: log)
-            await session.waitUntilIdle()
-            return (status, log)
-        } catch {
-            report("Winetricks failed", error)
-            return nil
+        winetricksJobs[id] = WinetricksJob(verbs: verbs, log: log, status: .preparing)
+
+        Task {
+            guard await prepare(id), let session = session(for: id) else {
+                winetricksJobs[id]?.status = .failed(-1)
+                return
+            }
+            let previous = state(of: id)
+            states[id] = .preparing("Winetricks: \(verbs.joined(separator: " "))…")
+            do {
+                let script = try await runtime.winetricksScript()
+                let process = try session.startWinetricks(script: script, verbs: verbs, force: force, unattended: unattended, log: log) { status in
+                    Task { @MainActor in
+                        await session.waitUntilIdle()
+                        self.finishWinetricks(id, status: status, restoring: previous)
+                    }
+                }
+                winetricksJobs[id]?.process = process
+                winetricksJobs[id]?.status = .running
+            } catch {
+                winetricksJobs[id]?.status = .failed(-1)
+                states[id] = previous
+                report("Winetricks failed", error)
+            }
         }
+    }
+
+    private func finishWinetricks(_ id: UUID, status: Int32, restoring previous: RunState) {
+        guard var job = winetricksJobs[id] else { return }
+        if job.status != .cancelled { job.status = status == 0 ? .succeeded : .failed(status) }
+        job.process = nil
+        winetricksJobs[id] = job
+        if state(of: id).isRunning == false { states[id] = previous.isRunning ? .idle : previous }
+        let name = game(id)?.name ?? "game"
+        switch job.status {
+        case .succeeded:
+            show(Toast(symbol: "checkmark.circle.fill", title: "Winetricks finished", detail: "Installed \(job.verbs.joined(separator: ", ")) into \(name)", tint: .green), for: id)
+        case .failed(let code):
+            show(Toast(symbol: "exclamationmark.triangle.fill", title: "Winetricks failed", detail: "Exit status \(code). Check the log for details.", tint: .orange), for: id)
+        default:
+            break
+        }
+    }
+
+    /// Stops a running winetricks job, including any installer it spawned inside the prefix.
+    func cancelWinetricks(_ id: UUID) {
+        guard let job = winetricksJobs[id], job.isRunning else { return }
+        winetricksJobs[id]?.status = .cancelled
+        job.process?.terminate()
+        if let session = session(for: id) { Task { await session.killAll() } }
+    }
+
+    func clearWinetricksJob(_ id: UUID) {
+        if winetricksJobs[id]?.isRunning != true { winetricksJobs[id] = nil }
     }
 
     /// Wipes and recreates a managed prefix. Installed games inside it are lost.

@@ -8,6 +8,7 @@ import AppKit
 enum DebugSnapshots {
     static var tabHandler: ((String) -> Void)?
     static var openSettings: (() -> Void)?
+    static var winetricksHandler: ((String) -> Void)?
 
     static func install(library: GameLibrary, navigation: AppNavigation) {
         DistributedNotificationCenter.default().addObserver(forName: .init("com.bunniesinc.notwindows.debug"), object: nil, queue: .main) { note in
@@ -43,8 +44,10 @@ enum DebugSnapshots {
         case "winetricks":
             let pieces = argument.split(separator: "|").map(String.init)
             if pieces.count == 2, let game = library.games.first(where: { $0.name == pieces[0] }) {
-                Task { _ = await library.winetricks(pieces[1].split(separator: " ").map(String.init), for: game.id) }
+                library.startWinetricks(pieces[1].split(separator: " ").map(String.init), force: false, unattended: true, for: game.id)
             }
+        case "wt":
+            winetricksHandler?(argument)
         case "settings":
             openSettings?()
         case "add":

@@ -51,7 +51,11 @@ struct GameDetailView: View {
             .sheet(isPresented: $showingWinetricks) { WinetricksSheet(gameID: gameID) }
             .sheet(isPresented: $showingLog) { LogSheet(game: game) }
             #if DEBUG
-            .onAppear { DebugSnapshots.tabHandler = { name in if let t = GameTab(rawValue: name) { tab = t } } }
+            .onAppear {
+                DebugSnapshots.tabHandler = { name in
+                    if name == "winetricks" { showingWinetricks = true } else if let t = GameTab(rawValue: name) { tab = t }
+                }
+            }
             #endif
         }
     }

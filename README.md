@@ -31,6 +31,9 @@ notwindows keeps your Windows games in one library. Each game gets its own Windo
 | ![Onboarding](docs/onboarding.png) | ![Engines](docs/settings-engines.png) |
 | **First run:** Rosetta check, then the runtime and engine download in one click | **Engine manager:** browse and install Sikarugir, CrossOver, GPTK and Whisky builds |
 
+![Winetricks browser](docs/winetricks.png)
+<p align="center"><b>Winetricks browser:</b> all 567 verbs by category, with search, installed status, multi-select, a live log and cancel</p>
+
 <p align="center"><img src="docs/add-game.png" width="520" alt="Add game sheet"></p>
 
 <sub>The sample library uses Wine's built-in programs (Notepad, Minesweeper, …) as stand-in games.</sub>
@@ -49,7 +52,7 @@ notwindows keeps your Windows games in one library. Each game gets its own Windo
   - Run a setup file into a fresh prefix, then pick the game's executable from a ranked list.
   - Import an existing Sikarugir/Wineskin wrapper. Its prefix stays where it is.
   - Drag and drop onto the window or the Dock icon.
-- **Tools per game:** winecfg, regedit, Task Manager, Control Panel, Explorer, cmd, Winetricks (Sikarugir's fork), running a one-off program in the prefix, opening `C:`, and viewing the last run's log with the full environment that was used.
+- **Tools per game:** winecfg, regedit, Task Manager, Control Panel, Explorer, cmd, a Winetricks browser (every verb from Sikarugir's fork, by category, with search, installed status, reinstall/silent options, a live log and cancel), running a one-off program in the prefix, opening `C:`, and viewing the last run's log with the full environment that was used.
 - **Engine manager:** lists Sikarugir's engine releases (marking the recommended ones), downloads them, imports `.tar.xz` archives, and picks up engines the Sikarugir Creator has already downloaded.
 - **Polish:** cards tilt towards the pointer, running games get an animated ring, toasts appear, symbols animate, and every effect respects Reduce Motion.
 
