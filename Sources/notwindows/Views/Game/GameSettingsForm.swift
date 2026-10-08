@@ -183,6 +183,21 @@ struct GameSettingsForm: View {
         } header: {
             Text("CPU")
         }
+
+        Section {
+            Toggle(isOn: setting(\.wineRosetta)) {
+                Text("WineRosetta")
+                Text("Emulates the instructions Rosetta 2 can't run in 32-bit World of Warcraft (1.12.1, 2.4.3, 3.3.5a).")
+            }
+            if let exe = game.executableURL, game.settings.wineRosetta, !WineRosetta.is32BitExecutable(exe) {
+                Label("This executable isn't 32-bit, so WineRosetta won't help it.", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            }
+        } header: {
+            Text("32-bit games on Apple Silicon")
+        } footer: {
+            Text("Places winerosetta as d3d9.dll next to the game (and D9VK as d9vk.dll when Direct3D 8/9 uses D9VK). Anything already there is moved aside and put back when you turn this off.")
+        }
     }
 
     // MARK: Input

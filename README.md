@@ -44,7 +44,7 @@ notwindows keeps your Windows games in one library. Each game gets its own Windo
 - **Play / Stop:** notwindows watches the whole prefix through `wineserver`, so games started from a launcher (Steam, Battle.net, …) count as running until the last process exits.
 - **Per-game settings:**
   - **Graphics:** D3D10/11/12 backend (WineD3D, DXMT, DXVK, D3DMetal), D3D8/9 backend (WineD3D, D9VK), cnc-ddraw, Vulkan driver (MoltenVK or KosmicKrisp), DXVK version, async shaders and HUD, Metal HUD, MoltenVK fast math, Retina mode, font smoothing.
-  - **Performance:** MSync, ESync, advertising AVX under Rosetta.
+  - **Performance:** MSync, ESync, advertising AVX under Rosetta, and WineRosetta for 32-bit World of Warcraft clients (1.12.1, 2.4.3, 3.3.5a). It's turned on automatically when you add a 32-bit `Wow.exe`.
   - **Input:** ⌘ as Ctrl, ⌥ as Alt, MFi vs HID controllers.
   - **System:** Windows version, log level, skipping Mono/Gecko, DLL overrides, extra environment variables.
 - **Adding games:**

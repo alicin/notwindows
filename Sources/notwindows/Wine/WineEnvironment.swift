@@ -82,6 +82,8 @@ enum WineEnvironment {
         if settings.cncDDraw { env["WINEDLLPATH_CNCD"] = rendererPath("cnc_ddraw") }
 
         var overrides = extraDLLOverrides
+        // winerosetta sits next to the game as a native d3d9.dll.
+        if settings.wineRosetta { overrides.append("d3d9=n,b") }
         if settings.skipMono { overrides.append("mscoree=") }
         if settings.skipGecko { overrides.append("mshtml=") }
         overrides += settings.dllOverrides

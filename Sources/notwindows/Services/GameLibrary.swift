@@ -153,7 +153,10 @@ final class GameLibrary {
     @discardableResult
     func addGame(executable: URL, name: String? = nil) -> Game {
         var game = Game(name: name ?? Self.suggestedName(for: executable), executablePath: executable.path)
-        game.engineName = nil
+        if WineRosetta.isLegacyWoW(executable) {
+            game.settings.wineRosetta = true
+            game.settings.direct3D9Backend = .d9vk
+        }
         save(game)
         refreshIconFromExecutable(game.id)
         Task { await prepare(game.id) }
@@ -297,6 +300,19 @@ final class GameLibrary {
             let log = session.game.lastLogURL
             try? FileManager.default.removeItem(at: log)
             writeLogHeader(session, to: log)
+
+            do {
+                try WineRosetta.sync(
+                    directory: executable.deletingLastPathComponent(),
+                    enabled: session.game.settings.wineRosetta,
+                    dll: WineRosetta.bundledDLL,
+                    d9vk: session.game.settings.direct3D9Backend == .d9vk ? WineRosetta.d9vkDLL(in: session.runtime) : nil
+                )
+            } catch {
+                states[id] = .idle
+                report("Couldn't set up winerosetta", error)
+                return
+            }
 
             let started = Date()
             do {

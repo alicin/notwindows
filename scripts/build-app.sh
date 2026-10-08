@@ -21,5 +21,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/notwindows"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+mkdir -p "$APP/Contents/Resources/winerosetta"
+cp Resources/winerosetta/winerosetta.dll "$APP/Contents/Resources/winerosetta/"
 codesign --force --sign - "$APP" >/dev/null
 echo "Built $APP"

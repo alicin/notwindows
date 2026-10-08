@@ -166,3 +166,45 @@ struct WinetricksCatalogTests {
         #expect(WinetricksCatalog.installedVerbs(in: prefix) == ["webview2", "corefonts"])
     }
 }
+
+struct WineRosettaTests {
+    func makeDir() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    @Test func placesAndRestoresFiles() throws {
+        let game = try makeDir()
+        let sources = try makeDir()
+        defer { try? FileManager.default.removeItem(at: game); try? FileManager.default.removeItem(at: sources) }
+        let dll = sources.appendingPathComponent("winerosetta.dll")
+        let d9vk = sources.appendingPathComponent("d9vk-d3d9.dll")
+        try Data("rosetta".utf8).write(to: dll)
+        try Data("d9vk".utf8).write(to: d9vk)
+        try Data("users own".utf8).write(to: game.appendingPathComponent("d3d9.dll"))
+
+        try WineRosetta.sync(directory: game, enabled: true, dll: dll, d9vk: d9vk)
+        #expect(try String(contentsOf: game.appendingPathComponent("d3d9.dll"), encoding: .utf8) == "rosetta")
+        #expect(try String(contentsOf: game.appendingPathComponent("d9vk.dll"), encoding: .utf8) == "d9vk")
+        #expect(try String(contentsOf: game.appendingPathComponent("d3d9.dll.notwindows-backup"), encoding: .utf8) == "users own")
+
+        try WineRosetta.sync(directory: game, enabled: true, dll: dll, d9vk: nil)
+        #expect(!game.appendingPathComponent("d9vk.dll").exists)
+        #expect(try String(contentsOf: game.appendingPathComponent("d3d9.dll.notwindows-backup"), encoding: .utf8) == "users own")
+
+        try WineRosetta.sync(directory: game, enabled: false, dll: dll, d9vk: nil)
+        #expect(try String(contentsOf: game.appendingPathComponent("d3d9.dll"), encoding: .utf8) == "users own")
+        #expect(!game.appendingPathComponent("d3d9.dll.notwindows-backup").exists)
+        #expect(!game.appendingPathComponent(WineRosetta.markerName).exists)
+    }
+
+    @Test func overridesD3D9WhenEnabled() {
+        var settings = GameSettings()
+        settings.wineRosetta = true
+        let env = WineEnvironment.make(engine: Engine(name: "E", directory: URL(fileURLWithPath: "/E")),
+                                       runtime: Runtime(name: "R", directory: URL(fileURLWithPath: "/R")),
+                                       prefix: URL(fileURLWithPath: "/P"), settings: settings, base: [:])
+        #expect(env["WINEDLLOVERRIDES"]?.hasPrefix("d3d9=n,b") == true)
+    }
+}
