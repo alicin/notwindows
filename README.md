@@ -115,3 +115,7 @@ notwindows is a front end. The Wine engines, the runtime (MoltenVK, KosmicKrisp,
 D3DMetal is © Apple and covered by Apple's Game Porting Toolkit license, which doesn't allow commercial ports. See the [Sikarugir repository](https://github.com/Sikarugir-App/Sikarugir/tree/main/D3DMetal).
 
 notwindows isn't affiliated with Sikarugir, CodeWeavers or Apple.
+
+---
+
+Big thanks to [Gcenx](https://github.com/Gcenx), creator of [Sikarugir](https://github.com/Sikarugir-App/Sikarugir). notwindows runs entirely on the engines and runtime he builds and maintains. If it's useful to you, consider [supporting his work](https://ko-fi.com/gcenx).
