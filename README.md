@@ -5,8 +5,8 @@
 <h1 align="center">notwindows</h1>
 
 <p align="center">
-  <b>A native macOS games launcher for Windows games.</b><br>
-  No wrappers. One library, with separate toggles for every setting on every game.
+  <b>A native macOS games launcher built on Sikarugir's Wine engines and runtime.</b><br>
+  One library, with separate toggles for every setting on every game.
 </p>
 
 <p align="center">
@@ -18,15 +18,17 @@
 
 ![Library with a game running](docs/library-running.png)
 
-## Why
+## About
 
-[Sikarugir](https://github.com/Sikarugir-App/Sikarugir) (and Wineskin before it) packages every game into its own `.app` wrapper, and you tweak it through a separate Configure app. It works, but you end up with a pile of 500 MB wrappers, each carrying its own copy of Wine and every renderer.
+notwindows is an experimental front end built on top of the work of the [Sikarugir](https://github.com/Sikarugir-App/Sikarugir) project. Sikarugir does all the hard parts: it builds and maintains the Wine engines, integrates DXMT, DXVK, D9VK and D3DMetal, and ships the runtime that makes Windows games run well on macOS. notwindows just wouldn't exist without it.
 
-notwindows uses the same engines and the same graphics stack, but it behaves like a games launcher:
+The only thing notwindows does differently is how it presents that stack. Sikarugir is organised around wrappers; notwindows tries a games-launcher layout instead:
 
 - **One library.** Every game appears in a grid, with artwork coloured from its own icon, playtime and when you last played.
-- **Per-game everything.** Each game has its own Windows prefix and its own settings, applied when it launches. Flipping DXVK to D3DMetal takes one click and doesn't rebuild anything.
-- **Shared runtime.** Engines and the renderer stack are downloaded once and used by every game.
+- **Per-game settings.** Each game has its own Windows prefix and its own settings, applied when it launches.
+- **Shared runtime.** Sikarugir's engines and renderer stack are downloaded once and used by every game.
+
+It was written quickly with an AI coding agent and hasn't been battle-tested the way Sikarugir has. If you want the mature, supported tool, use [Sikarugir](https://github.com/Sikarugir-App/Sikarugir) and support its developer on [Ko-fi](https://ko-fi.com/gcenx).
 
 ## Screenshots
 
