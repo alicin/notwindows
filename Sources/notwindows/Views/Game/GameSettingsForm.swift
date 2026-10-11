@@ -34,6 +34,12 @@ struct GameSettingsForm: View {
 
         SmartSetupBanner(gameID: gameID)
 
+        if game.isSteamLauncher {
+            SteamLauncherSection(gameID: gameID)
+        } else if game.isSteamGame {
+            SteamGameSection(gameID: gameID)
+        }
+
         Section("Game") {
             TextField("Name", text: library.binding(gameID, \.name, default: ""))
             LabeledContent("Executable") {
@@ -57,6 +63,12 @@ struct GameSettingsForm: View {
         }
 
         Section {
+            if let launcher = library.launcher(of: game) {
+                LabeledContent("Wine engine") {
+                    Text(engines.engine(named: launcher.engineName)?.displayName ?? "Steam's engine")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
             Picker("Wine engine", selection: library.binding(gameID, \.engineName, default: nil)) {
                 Text("Default (\(engines.defaultEngine?.displayName ?? "none"))").tag(String?.none)
                 if !engines.installed.isEmpty { Divider() }
@@ -67,13 +79,16 @@ struct GameSettingsForm: View {
                     Text("\(Engine.displayName(for: name)) (missing)").tag(Optional(name))
                 }
             }
+            }
             Picker("Windows version", selection: setting(\.windowsVersion)) {
                 ForEach(WindowsVersion.allCases) { Text($0.title).tag($0) }
             }
         } header: {
             Text("Compatibility")
         } footer: {
-            Text("Switching engines on an existing prefix makes Wine update it on next launch.")
+            Text(game.isSteamGame
+                 ? "Steam games run next to the Steam client, so they use its engine. Windows version and other registry settings apply to this game only."
+                 : "Switching engines on an existing prefix makes Wine update it on next launch.")
         }
 
         Section("Prefix") {
@@ -175,7 +190,12 @@ struct GameSettingsForm: View {
             }
         } header: {
             Text("Synchronization")
+        } footer: {
+            if game.isSteamGame {
+                Text("Follows the Steam entry's settings, since all processes in a prefix must use the same mode.")
+            }
         }
+        .disabled(game.isSteamGame)
 
         Section {
             Toggle(isOn: setting(\.advertiseAVX)) {
@@ -460,5 +480,81 @@ private struct SmartSetupBanner: View {
         guard let report = library.compatReports[gameID], let game = library.game(gameID) else { return 0 }
         let installed = library.installedWinetricksVerbs(gameID)
         return report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, installedVerbs: installed) }.count
+    }
+}
+
+private struct SteamLauncherSection: View {
+    @Environment(GameLibrary.self) private var library
+    @Environment(AppNavigation.self) private var navigation
+    let gameID: UUID
+
+    var body: some View {
+        let games = library.steamGames(of: gameID)
+        Section {
+            if games.isEmpty {
+                Text("No installed games found yet. Install games in Steam and they'll show up here automatically, each with its own settings.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(games) { game in
+                    Button {
+                        navigation.selection = .game(game.id)
+                    } label: {
+                        HStack(spacing: 10) {
+                            GameIconView(icon: library.icons[game.id], size: 24)
+                            Text(game.name).foregroundStyle(.primary)
+                            Spacer()
+                            if game.executablePath.isEmpty {
+                                Text("No executable").font(.caption).foregroundStyle(.orange)
+                            }
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        } header: {
+            HStack {
+                Text("Steam Library")
+                Spacer()
+                Button("Sync Now") { library.syncSteamLibrary(gameID) }
+                    .buttonStyle(.link)
+            }
+        } footer: {
+            Text("Games installed through this Steam appear in your library and the sidebar. Playing one starts Steam in the background, then runs the game with its own settings.")
+        }
+    }
+}
+
+private struct SteamGameSection: View {
+    @Environment(GameLibrary.self) private var library
+    @Environment(AppNavigation.self) private var navigation
+    let gameID: UUID
+
+    var body: some View {
+        let game = library.game(gameID)
+        Section {
+            if let launcher = game.flatMap({ library.launcher(of: $0) }) {
+                LabeledContent("Installed through") {
+                    Button(launcher.name) { navigation.selection = .game(launcher.id) }
+                        .buttonStyle(.link)
+                }
+            }
+            if let appID = game?.steamAppID {
+                LabeledContent("Steam app") {
+                    Link(String(appID), destination: URL(string: "https://store.steampowered.com/app/\(appID)")!)
+                }
+            }
+            if let folder = game?.installDirectory {
+                LabeledContent("Install folder") {
+                    Button("Show in Finder") { NSWorkspace.shared.open(URL(fileURLWithPath: folder)) }
+                        .buttonStyle(.link)
+                }
+            }
+        } header: {
+            Text("Steam")
+        } footer: {
+            Text("Play starts Steam in the background if needed, then launches the game directly so its own settings apply. A steam_appid.txt is added next to the executable so the game doesn't restart through the Steam client.")
+        }
     }
 }

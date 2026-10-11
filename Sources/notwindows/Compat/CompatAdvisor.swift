@@ -27,6 +27,12 @@ enum CompatAdvisor {
         report.warnings = MacRules.warnings(for: exe)
         let local = MacRules.suggestions(for: exe, executable: executable)
 
+        // The Steam client itself isn't a game to look up; its games are matched by app ID instead.
+        if executable.lastPathComponent.lowercased() == "steam.exe" {
+            report.suggestions = local
+            return report
+        }
+
         let sources = CompatSources.shared
         let titles = titleCandidates(for: game, executable: exe)
 
@@ -101,7 +107,7 @@ enum CompatAdvisor {
 
         var naming: [CompatSuggestion] = []
         if let match = report.match, match.title != game.name {
-            let similar = TitleMatcher.score(match.title, game.name) >= 0.75
+            let similar = TitleMatcher.score(match.title, game.name) >= 0.95
             naming.append(CompatSuggestion(action: .rename(match.title),
                                            reason: similar ? "Official title from Steam." : "Matched title from Steam. Make sure it's the right game.",
                                            source: .macRules, recommended: similar))

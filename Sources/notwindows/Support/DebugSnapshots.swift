@@ -48,6 +48,8 @@ enum DebugSnapshots {
             }
         case "wt":
             winetricksHandler?(argument)
+        case "steamsync":
+            library.syncAllSteamLibraries()
         case "settings":
             openSettings?()
         case "add":

@@ -277,6 +277,16 @@ struct GameCard: View {
             .overlay {
                 if state.isRunning { RunningGlow() }
             }
+            .overlay(alignment: .topLeading) {
+                if game.isSteamGame {
+                    Label("Steam", systemImage: "cloud.fill")
+                        .font(.caption2.weight(.bold))
+                        .labelStyle(.titleAndIcon)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(8)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if game.isFavorite {
                     Image(systemName: "star.fill")

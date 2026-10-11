@@ -34,7 +34,7 @@ struct AppAlert: Identifiable {
 @Observable
 final class GameLibrary {
     private(set) var games: [Game] = []
-    private(set) var states: [UUID: RunState] = [:]
+    var states: [UUID: RunState] = [:]
     private(set) var icons: [UUID: NSImage] = [:]
     private(set) var palettes: [UUID: IconPalette] = [:]
     private(set) var backdrops: [UUID: NSImage] = [:]
@@ -73,6 +73,8 @@ final class GameLibrary {
         self.runtime = runtime
         Paths.ensureDirectories()
         load()
+        syncAllSteamLibraries(announce: false)
+        startSteamLibraryWatcher()
     }
 
     // MARK: Library
@@ -122,6 +124,9 @@ final class GameLibrary {
     }
 
     func remove(_ game: Game) {
+        if game.isSteamLauncher {
+            for child in steamGames(of: game.id) { remove(child) }
+        }
         do {
             try FileManager.default.trashItem(at: game.directory, resultingItemURL: nil)
         } catch {
@@ -172,6 +177,7 @@ final class GameLibrary {
         Task {
             await prepare(id)
             await analyzeCompatibility(id, autoApply: autoApplyCompat)
+            syncSteamLibrary(id)
         }
         return game
     }
@@ -226,11 +232,16 @@ final class GameLibrary {
         update(id) { game in
             game.executablePath = url.path
             game.workingDirectory = nil
-            if game.name.isEmpty || game.name == "New Game" { game.name = Self.suggestedName(for: url) }
+            if game.name.isEmpty || game.name == "New Game" || url.lastPathComponent.lowercased() == "steam.exe" {
+                game.name = Self.suggestedName(for: url)
+            }
         }
         candidates[id] = nil
         if icons[id] == nil || PEIconExtractor.image(fromExecutableAt: url) != nil { refreshIconFromExecutable(id) }
-        Task { await analyzeCompatibility(id, autoApply: autoApplyCompat) }
+        Task {
+            await analyzeCompatibility(id, autoApply: autoApplyCompat)
+            syncSteamLibrary(id)
+        }
     }
 
     // MARK: Compatibility suggestions
@@ -249,7 +260,8 @@ final class GameLibrary {
            let text = try? String(contentsOf: script, encoding: .utf8) {
             knownWinetricksVerbs = Set(WinetricksCatalog.parse(text).map(\.name))
         }
-        let report = await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match)
+        let steamMatch = game.steamAppID.map { CompatMatch(title: game.name, steamAppID: $0, umuID: nil, store: "steam") }
+        let report = await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match ?? steamMatch)
         compatReports[id] = report
         guard autoApply else { return }
 
@@ -286,6 +298,7 @@ final class GameLibrary {
 
     nonisolated static func suggestedName(for executable: URL) -> String {
         let stem = executable.deletingPathExtension().lastPathComponent
+        if stem.lowercased() == "steam" { return "Steam" }
         let generic = ["game", "launcher", "start", "play", "setup", "install", "main", "bin", "win64", "win32", "x64", "binaries"]
         var name = stem
         var folder = executable.deletingLastPathComponent()
@@ -303,7 +316,14 @@ final class GameLibrary {
     // MARK: Running
 
     func session(for id: UUID) -> WineSession? {
-        guard let game = game(id) else { return nil }
+        guard var game = game(id) else { return nil }
+        if let launcher = launcher(of: game) {
+            // Steam games run alongside the client, so they must use its Wine engine, prefix and sync mode.
+            game.engineName = launcher.engineName
+            game.externalPrefixPath = launcher.prefixURL.path
+            game.settings.msync = launcher.settings.msync
+            game.settings.esync = launcher.settings.esync
+        }
         guard let runtime = runtime.current else {
             alert = AppAlert(title: "Runtime not installed", message: "Install the Sikarugir runtime from Settings › Runtime before running games.")
             return nil
@@ -356,45 +376,68 @@ final class GameLibrary {
             alert = AppAlert(title: "Executable not found", message: "Choose the game's executable in its General settings.")
             return
         }
-        states[id] = .preparing("Starting…")
-        Task {
-            guard await prepare(id), let session = session(for: id) else {
-                states[id] = .idle
-                return
-            }
-            let log = session.game.lastLogURL
-            try? FileManager.default.removeItem(at: log)
-            writeLogHeader(session, to: log)
+        states[id] = .preparing(game.isSteamGame ? "Starting Steam…" : "Starting…")
+        Task { await launch(id) }
+    }
 
-            do {
-                try WineRosetta.sync(
-                    directory: executable.deletingLastPathComponent(),
-                    enabled: session.game.settings.wineRosetta,
-                    dll: WineRosetta.bundledDLL,
-                    d9vk: session.game.settings.direct3D9Backend == .d9vk ? WineRosetta.d9vkDLL(in: session.runtime) : nil
-                )
-            } catch {
+    /// Launches a game whose state is already `.preparing`. Returns false if it couldn't start.
+    @discardableResult
+    func launch(_ id: UUID, extraArguments: String = "") async -> Bool {
+        guard let game = game(id), let executable = game.executableURL else {
+            states[id] = .idle
+            return false
+        }
+        if game.isSteamGame {
+            guard await ensureSteamRunning(for: game) else {
                 states[id] = .idle
-                report("Couldn't set up winerosetta", error)
-                return
+                return false
             }
+            writeSteamAppIDFile(for: game)
+            states[id] = .preparing("Starting…")
+        }
+        guard await prepare(id), let session = session(for: id) else {
+            states[id] = .idle
+            return false
+        }
+        let log = session.game.lastLogURL
+        try? FileManager.default.removeItem(at: log)
+        writeLogHeader(session, to: log)
 
-            let started = Date()
-            do {
-                _ = try session.launch(executable: executable, arguments: session.game.arguments,
-                                       directory: session.game.resolvedWorkingDirectory, log: log) { _ in
-                    Task { @MainActor in
+        do {
+            try WineRosetta.sync(
+                directory: executable.deletingLastPathComponent(),
+                enabled: session.game.settings.wineRosetta,
+                dll: WineRosetta.bundledDLL,
+                d9vk: session.game.settings.direct3D9Backend == .d9vk ? WineRosetta.d9vkDLL(in: session.runtime) : nil
+            )
+        } catch {
+            states[id] = .idle
+            report("Couldn't set up winerosetta", error)
+            return false
+        }
+
+        let started = Date()
+        let arguments = [session.game.arguments, extraArguments].filter { !$0.isEmpty }.joined(separator: " ")
+        do {
+            _ = try session.launch(executable: executable, arguments: arguments,
+                                   directory: session.game.resolvedWorkingDirectory, log: log) { _ in
+                Task { @MainActor in
+                    if session.game.isSteamGame {
+                        await self.waitForSteamGameExit(session.game)
+                    } else {
                         await session.waitUntilIdle()
-                        self.finishRun(id, started: started)
                     }
+                    self.finishRun(id, started: started)
                 }
-                states[id] = .running(since: started)
-                update(id) { $0.lastPlayedAt = started }
-                show(Toast(symbol: "play.fill", title: "Launching \(game.name)", detail: game.settings.direct3DBackend.title), for: id)
-            } catch {
-                states[id] = .idle
-                report("Couldn't launch \(game.name)", error)
             }
+            states[id] = .running(since: started)
+            update(id) { $0.lastPlayedAt = started }
+            show(Toast(symbol: "play.fill", title: "Launching \(game.name)", detail: game.settings.direct3DBackend.title), for: id)
+            return true
+        } catch {
+            states[id] = .idle
+            report("Couldn't launch \(game.name)", error)
+            return false
         }
     }
 
@@ -403,13 +446,19 @@ final class GameLibrary {
         states[id] = .idle
         let elapsed = Date().timeIntervalSince(started)
         update(id) { $0.totalPlaytime += elapsed }
-        if let game = game(id) {
+        if let game = game(id), game.isSteamLauncher {
+            syncSteamLibrary(id)
+        } else if let game = game(id) {
             let session = elapsed < 60 ? "a quick session" : Format.playtime(elapsed)
             show(Toast(symbol: "flag.checkered", title: "Finished \(game.name)", detail: "Played \(session) · \(Format.playtime(game.totalPlaytime)) total"), for: id)
         }
     }
 
     func stop(_ id: UUID) {
+        if let game = game(id), game.isSteamGame {
+            stopSteamGame(game)
+            return
+        }
         guard let session = session(for: id) else { return }
         Task { await session.killAll() }
     }

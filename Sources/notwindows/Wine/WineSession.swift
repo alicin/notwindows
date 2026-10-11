@@ -44,13 +44,19 @@ struct WineSession {
     let runtime: Runtime
 
     var environment: [String: String] {
-        WineEnvironment.make(
+        var env = WineEnvironment.make(
             engine: engine,
             runtime: runtime,
             prefix: game.prefixURL,
             settings: game.settings,
             cacheDirectory: game.cacheDirectory
         )
+        if game.isSteamGame, let appID = game.steamAppID {
+            // Tells Steamworks which app this is, so it doesn't relaunch the game through the Steam client.
+            env["SteamAppId"] = String(appID)
+            env["SteamGameId"] = String(appID)
+        }
+        return env
     }
 
     func initializePrefix(log: URL) async throws {
@@ -66,7 +72,8 @@ struct WineSession {
 
     func applyRegistry(log: URL) async throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("notwindows-\(game.id.uuidString).reg")
-        try RegistryWriter.document(for: game.settings).write(to: file, atomically: true, encoding: .utf8)
+        let scope = game.isSteamGame ? game.executableURL?.lastPathComponent : nil
+        try RegistryWriter.document(for: game.settings, appExecutable: scope).write(to: file, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: file) }
         var env = environment
         env["WINEDEBUG"] = "-all"

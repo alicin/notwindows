@@ -208,3 +208,17 @@ struct WineRosettaTests {
         #expect(env["WINEDLLOVERRIDES"]?.hasPrefix("d3d9=n,b") == true)
     }
 }
+
+struct ScopedRegistryTests {
+    @Test func scopesToApplicationForSharedPrefixes() {
+        var settings = GameSettings()
+        settings.windowsVersion = .win7
+        settings.retinaMode = true
+        let doc = RegistryWriter.document(for: settings, appExecutable: "game.exe")
+        #expect(doc.contains(#"[HKEY_CURRENT_USER\Software\Wine\AppDefaults\game.exe\Mac Driver]"#))
+        #expect(doc.contains(#"[HKEY_CURRENT_USER\Software\Wine\AppDefaults\game.exe]"#))
+        #expect(doc.contains(#""Version"="win7""#))
+        #expect(!doc.contains("Control Panel"))
+        #expect(!doc.contains(#"[HKEY_CURRENT_USER\Software\Wine]"#))
+    }
+}

@@ -26,10 +26,25 @@ struct SidebarView: View {
             }
 
             Section("Games") {
-                ForEach(filteredGames) { game in
+                ForEach(filteredGames.filter { $0.launcherID == nil }) { game in
                     SidebarGameRow(game: game, icon: library.icons[game.id], state: library.state(of: game.id))
                         .tag(SidebarItem.game(game.id))
                         .contextMenu { GameContextMenu(game: game) }
+                }
+            }
+
+            ForEach(library.games.filter(\.isSteamLauncher)) { launcher in
+                let children = filteredGames.filter { $0.launcherID == launcher.id }
+                if !children.isEmpty {
+                    Section {
+                        ForEach(children) { game in
+                            SidebarGameRow(game: game, icon: library.icons[game.id], state: library.state(of: game.id))
+                                .tag(SidebarItem.game(game.id))
+                                .contextMenu { GameContextMenu(game: game) }
+                        }
+                    } header: {
+                        Label("\(launcher.name) Library", systemImage: "cloud")
+                    }
                 }
             }
         }

@@ -18,6 +18,10 @@ struct Game: Codable, Identifiable, Hashable {
     var isFavorite = false
     var appliedRegistryFingerprint: String?
     var appliedRegistryEngine: String?
+    /// Set for games found in a Steam library; they share the Steam launcher's prefix and Wine server.
+    var launcherID: UUID?
+    var steamAppID: Int?
+    var installDirectory: String?
 
     init(name: String, executablePath: String = "", settings: GameSettings = GameSettings()) {
         self.name = name
@@ -41,6 +45,9 @@ struct Game: Codable, Identifiable, Hashable {
         isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         appliedRegistryFingerprint = try c.decodeIfPresent(String.self, forKey: .appliedRegistryFingerprint)
         appliedRegistryEngine = try c.decodeIfPresent(String.self, forKey: .appliedRegistryEngine)
+        launcherID = try c.decodeIfPresent(UUID.self, forKey: .launcherID)
+        steamAppID = try c.decodeIfPresent(Int.self, forKey: .steamAppID)
+        installDirectory = try c.decodeIfPresent(String.self, forKey: .installDirectory)
     }
 
     var directory: URL { Paths.games.appendingPathComponent(id.uuidString, isDirectory: true) }
@@ -56,6 +63,9 @@ struct Game: Codable, Identifiable, Hashable {
     }
 
     var driveC: URL { prefixURL.appendingPathComponent("drive_c", isDirectory: true) }
+
+    var isSteamLauncher: Bool { launcherID == nil && executableURL?.lastPathComponent.lowercased() == "steam.exe" }
+    var isSteamGame: Bool { launcherID != nil }
     var isPrefixInitialized: Bool { prefixURL.appendingPathComponent("system.reg").exists }
     var executableURL: URL? { executablePath.isEmpty ? nil : URL(fileURLWithPath: executablePath) }
 
