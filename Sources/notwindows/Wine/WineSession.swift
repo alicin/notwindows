@@ -42,6 +42,8 @@ struct WineSession {
     let game: Game
     let engine: Engine
     let runtime: Runtime
+    /// Set when the game runs through rosettax87.
+    var x87Loader: URL?
 
     var environment: [String: String] {
         var env = WineEnvironment.make(
@@ -51,6 +53,7 @@ struct WineSession {
             settings: game.settings,
             cacheDirectory: game.cacheDirectory
         )
+        if let x87Loader { env["ROSETTA_X87_PATH"] = x87Loader.path }
         if game.isSteamGame, let appID = game.steamAppID {
             // Tells Steamworks which app this is, so it doesn't relaunch the game through the Steam client.
             env["SteamAppId"] = String(appID)

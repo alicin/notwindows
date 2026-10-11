@@ -175,6 +175,7 @@ struct GameSettings: Codable, Hashable {
     var esync = true
     var advertiseAVX = true
     var wineRosetta = false
+    var rosettaX87 = false
 
     // Input
     var commandAsControl = false
@@ -215,6 +216,7 @@ struct GameSettings: Codable, Hashable {
         esync = (try? c.decodeIfPresent(Bool.self, forKey: .esync)) ?? d.esync
         advertiseAVX = (try? c.decodeIfPresent(Bool.self, forKey: .advertiseAVX)) ?? d.advertiseAVX
         wineRosetta = (try? c.decodeIfPresent(Bool.self, forKey: .wineRosetta)) ?? d.wineRosetta
+        rosettaX87 = (try? c.decodeIfPresent(Bool.self, forKey: .rosettaX87)) ?? d.rosettaX87
         commandAsControl = (try? c.decodeIfPresent(Bool.self, forKey: .commandAsControl)) ?? d.commandAsControl
         optionAsAlt = (try? c.decodeIfPresent(Bool.self, forKey: .optionAsAlt)) ?? d.optionAsAlt
         disableMFiControllers = (try? c.decodeIfPresent(Bool.self, forKey: .disableMFiControllers)) ?? d.disableMFiControllers

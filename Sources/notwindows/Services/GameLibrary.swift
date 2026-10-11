@@ -398,9 +398,19 @@ final class GameLibrary {
             writeSteamAppIDFile(for: game)
             states[id] = .preparing("Starting…")
         }
-        guard await prepare(id), let session = session(for: id) else {
+        guard await prepare(id), var session = session(for: id) else {
             states[id] = .idle
             return false
+        }
+        if session.game.settings.rosettaX87 {
+            do {
+                try RosettaX87.prepare(session.engine)
+                session.x87Loader = try RosettaX87.install()
+            } catch {
+                states[id] = .idle
+                report("Couldn't set up rosettax87", error)
+                return false
+            }
         }
         let log = session.game.lastLogURL
         try? FileManager.default.removeItem(at: log)

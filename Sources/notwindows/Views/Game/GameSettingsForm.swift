@@ -213,6 +213,17 @@ struct GameSettingsForm: View {
                 Text("WineRosetta")
                 Text("Emulates the instructions Rosetta 2 can't run in 32-bit World of Warcraft (1.12.1, 2.4.3, 3.3.5a).")
             }
+            Toggle(isOn: setting(\.rosettaX87)) {
+                HStack(spacing: 6) {
+                    Text("rosettax87")
+                    Text("Experimental")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 1)
+                        .background(.orange.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.orange)
+                }
+                Text("Replaces Rosetta's slow x87 math with a fast version, often many times faster in old 32-bit games. The first time, macOS may ask to allow Developer Tools access.")
+            }
             if let exe = game.executableURL, game.settings.wineRosetta, !WineRosetta.is32BitExecutable(exe) {
                 Label("This executable isn't 32-bit, so WineRosetta won't help it.", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)

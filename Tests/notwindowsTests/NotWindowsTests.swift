@@ -227,3 +227,14 @@ struct ScopedRegistryTests {
         #expect(!doc.contains(#"[HKEY_CURRENT_USER\Software\Wine]"#))
     }
 }
+
+struct RosettaX87SessionTests {
+    @Test func setsTheWineHookOnlyWhenEnabled() {
+        let engine = Engine(name: "E", directory: URL(fileURLWithPath: "/E"))
+        let runtime = Runtime(name: "R", directory: URL(fileURLWithPath: "/R"))
+        var session = WineSession(game: Game(name: "G", executablePath: "/g.exe"), engine: engine, runtime: runtime)
+        #expect(session.environment["ROSETTA_X87_PATH"] == nil)
+        session.x87Loader = URL(fileURLWithPath: "/T/runtime_loader")
+        #expect(session.environment["ROSETTA_X87_PATH"] == "/T/runtime_loader")
+    }
+}
