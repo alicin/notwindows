@@ -64,6 +64,8 @@ enum WineEnvironment {
             env["WINEDLLPATH_DXMT"] = rendererPath("dxmt")
             env["WINEDLLPATH_PREPEND"] = rendererPath("dxmt")
             env["DXMT_ALLOW_CROSS_PROCESS_SWAPCHAIN"] = "1"
+            // Without a path DXMT recompiles every shader each launch.
+            if let cacheDirectory { env["DXMT_SHADER_CACHE_PATH"] = cacheDirectory.appendingPathComponent("dxmt").path }
         case .dxvk:
             env["WINEDLLPATH_DXVK"] = rendererPath(dxvkRendererName(for: settings))
         case .d3dmetal:

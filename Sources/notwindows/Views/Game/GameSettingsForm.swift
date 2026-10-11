@@ -140,6 +140,8 @@ struct GameSettingsForm: View {
             }
         }
 
+        ShaderCacheSection(gameID: gameID)
+
         Section("Display") {
             Toggle(isOn: setting(\.retinaMode)) {
                 Text("High resolution (Retina) mode")
@@ -567,5 +569,47 @@ private struct SteamGameSection: View {
         } footer: {
             Text("Play starts Steam in the background if needed, then launches the game directly so its own settings apply. A steam_appid.txt is added next to the executable so the game doesn't restart through the Steam client.")
         }
+    }
+}
+
+private struct ShaderCacheSection: View {
+    @Environment(GameLibrary.self) private var library
+    let gameID: UUID
+    @State private var size: Int64?
+
+    var body: some View {
+        Section {
+            LabeledContent("This game's cache") {
+                HStack {
+                    Text(size.map { $0 == 0 ? "Empty" : Format.bytes($0) } ?? "…").foregroundStyle(.secondary)
+                    Button("Clear") { clear() }
+                        .disabled((size ?? 0) == 0 || library.state(of: gameID).isBusy)
+                }
+            }
+        } header: {
+            Text("Shader cache")
+        } footer: {
+            Text("Shaders are compiled the first time a game needs them, which causes the stutter on first launch or in new areas. DXMT saves them here; macOS also keeps compiled Metal shaders for all games. Clear only if a game shows graphics glitches after an update.")
+        }
+        .task { refresh() }
+    }
+
+    private var folder: URL? { library.game(gameID)?.cacheDirectory }
+
+    private func refresh() {
+        guard let folder else { return }
+        Task.detached(priority: .utility) {
+            let total = (FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey])?.compactMap { item -> Int64? in
+                guard let url = item as? URL else { return nil }
+                return (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
+            } ?? []).reduce(0, +)
+            await MainActor.run { size = total }
+        }
+    }
+
+    private func clear() {
+        guard let folder else { return }
+        try? FileManager.default.removeItem(at: folder)
+        refresh()
     }
 }

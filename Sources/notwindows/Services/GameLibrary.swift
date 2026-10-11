@@ -405,6 +405,9 @@ final class GameLibrary {
         let log = session.game.lastLogURL
         try? FileManager.default.removeItem(at: log)
         writeLogHeader(session, to: log)
+        for folder in ["dxmt", "dxvk"] {
+            try? FileManager.default.createDirectory(at: session.game.cacheDirectory.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
 
         do {
             try WineRosetta.sync(

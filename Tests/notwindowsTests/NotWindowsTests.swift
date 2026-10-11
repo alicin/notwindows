@@ -32,6 +32,7 @@ struct WineEnvironmentTests {
         #expect(e["WINEDLLPATH_CNCD"] == "/R/Contents/Frameworks/renderer/cnc_ddraw/wine")
         #expect(e["WINEDLLPATH_DXVK"] == nil)
         #expect(e["WINEDLLPATH_D3DMETAL"] == nil)
+        #expect(e["DXMT_SHADER_CACHE_PATH"] == "/C/dxmt")
         #expect(e["VK_DRIVER_FILES"] == "/R/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json")
     }
 
