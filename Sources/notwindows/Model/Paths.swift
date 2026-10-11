@@ -14,6 +14,7 @@ enum Paths {
     static var runtime: URL { root.appendingPathComponent("Runtime", isDirectory: true) }
     static var downloads: URL { root.appendingPathComponent("Downloads", isDirectory: true) }
     static var tools: URL { root.appendingPathComponent("Tools", isDirectory: true) }
+    static var linkHandlers: URL { root.appendingPathComponent("LinkHandlers", isDirectory: true) }
 
     /// Engines downloaded by the original Sikarugir Creator, offered for import.
     static var sikarugirEngines: URL {

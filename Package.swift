@@ -10,6 +10,11 @@ let package = Package(
             path: "Sources/notwindows",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .executableTarget(
+            name: "notwindows-link-helper",
+            path: "Sources/notwindows-link-helper",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(
             name: "notwindowsTests",
             dependencies: ["notwindows"],

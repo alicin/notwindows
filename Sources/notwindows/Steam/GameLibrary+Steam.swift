@@ -114,6 +114,7 @@ extension GameLibrary {
                 try? await Task.sleep(for: .seconds(20))
                 guard let self else { return }
                 self.syncAllSteamLibraries()
+                self.refreshLinkHandlers()
             }
         }
     }

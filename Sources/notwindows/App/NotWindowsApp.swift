@@ -22,6 +22,13 @@ final class AppNavigation {
     /// Adds dropped or opened files: executables become games, .app bundles are imported as wrappers.
     func open(_ urls: [URL], into library: GameLibrary) {
         for url in urls {
+            if url.scheme == "notwindows" {
+                if url.host == "open-url",
+                   let link = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value {
+                    library.openForwardedLink(link)
+                }
+                continue
+            }
             switch url.pathExtension.lowercased() {
             case "app":
                 library.importWrapper(url)

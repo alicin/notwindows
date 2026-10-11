@@ -8,6 +8,8 @@ struct SettingsView: View {
                 .tabItem { Label("Engines", systemImage: "cpu") }
             RuntimeSettingsView()
                 .tabItem { Label("Runtime", systemImage: "shippingbox") }
+            LinksSettingsView()
+                .tabItem { Label("Links", systemImage: "link") }
             GeneralSettingsView()
                 .tabItem { Label("Library", systemImage: "books.vertical") }
         }
@@ -234,5 +236,71 @@ private struct RuntimeSettingsView: View {
         }
         .formStyle(.grouped)
         .task { await runtime.checkForUpdate() }
+    }
+}
+
+private struct LinksSettingsView: View {
+    @Environment(GameLibrary.self) private var library
+
+    var body: some View {
+        Form {
+            Section {
+                if library.linkHandlers.isEmpty {
+                    Text("No game has registered a link type yet. Launchers usually register theirs the first time they run.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(library.linkHandlers) { handler in
+                    LinkHandlerRow(handler: handler)
+                }
+            } header: {
+                HStack {
+                    Text("Link types from your games")
+                    Spacer()
+                    Button { library.refreshLinkHandlers() } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.borderless)
+                        .help("Rescan")
+                }
+            } footer: {
+                Text("Launchers that sign in through your browser finish by opening a link like jagex:// or com.epicgames.launcher://. notwindows registers a small helper for each of these with macOS and hands the link to the game that registered it.")
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear { library.refreshLinkHandlers() }
+    }
+}
+
+struct LinkHandlerRow: View {
+    @Environment(GameLibrary.self) private var library
+    let handler: LinkHandler
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "link")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(handler.scheme)://").font(.body.monospaced())
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            switch handler.status {
+            case .active:
+                Label("Active", systemImage: "checkmark.circle.fill").foregroundStyle(.green).labelStyle(.titleAndIcon).font(.caption)
+                Button("Turn Off") { library.setLinkScheme(handler.scheme, enabled: false) }.controlSize(.small)
+            case .disabled:
+                Text("Off").font(.caption).foregroundStyle(.secondary)
+                Button("Turn On") { library.setLinkScheme(handler.scheme, enabled: true) }.controlSize(.small)
+            case .handledByOtherApp(let app):
+                Text("Opens in \(app)").font(.caption).foregroundStyle(.orange)
+                Button("Use notwindows") { library.takeOverLinkScheme(handler.scheme) }.controlSize(.small)
+            case .failed(let message):
+                Text(message).font(.caption).foregroundStyle(.red).lineLimit(1).help(message)
+            }
+        }
+    }
+
+    private var subtitle: String {
+        let games = handler.gameIDs.compactMap { library.game($0)?.name }
+        let program = handler.program.map { "\($0) · " } ?? ""
+        return program + (games.isEmpty ? "No game" : games.joined(separator: ", "))
     }
 }

@@ -85,3 +85,68 @@ struct SteamNamingTests {
         #expect(GameLibrary.suggestedName(for: URL(fileURLWithPath: "/x/Program Files (x86)/Steam/steam.exe")) == "Steam")
     }
 }
+
+struct ProtocolRegistryTests {
+    @Test func findsLauncherSchemesAndSkipsWineBuiltins() {
+        let registry = #"""
+        WINE REGISTRY Version 2
+
+        [Software\\Classes\\microbot-launcher] 1791420573
+        #time=1dd56bee2943ee2
+        @="URL:Microbot Launcher"
+        "URL Protocol"=""
+
+        [Software\\Classes\\microbot-launcher\\shell\\open\\command] 1791420573
+        @="\"C:\\users\\ali\\AppData\\Local\\Microbot\\Launcher\\MicrobotLauncher.exe\" \"%1\""
+
+        [Software\\Classes\\https] 1791420553
+        "URL Protocol"=""
+
+        [Software\\Classes\\https\\shell\\open\\command] 1791420553
+        @="\"C:\\windows\\system32\\winebrowser.exe\" \"%1\""
+
+        [Software\\Classes\\com.epicgames.launcher] 1791420553
+        "URL Protocol"=""
+
+        [Software\\Classes\\com.epicgames.launcher\\shell\\open\\command] 1791420553
+        @="\"C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe\" %1"
+
+        [Software\\Classes\\txtfile\\shell\\open\\command] 1791420553
+        @="notepad.exe %1"
+
+        [Software\\Classes\\noprotocol] 1791420553
+        @="Not a URL handler"
+
+        [Software\\Classes\\noprotocol\\shell\\open\\command] 1791420553
+        @="foo.exe %1"
+        """#
+        let protocols = ProtocolRegistry.parse(registry)
+        #expect(protocols.map(\.scheme) == ["com.epicgames.launcher", "microbot-launcher"])
+        let microbot = protocols[1]
+        #expect(microbot.description == "URL:Microbot Launcher")
+        #expect(microbot.command == #""C:\users\ali\AppData\Local\Microbot\Launcher\MicrobotLauncher.exe" "%1""#)
+        #expect(microbot.programName == "MicrobotLauncher.exe")
+        #expect(protocols[0].programName == "EpicGamesLauncher.exe")
+    }
+
+    @Test func validatesSchemes() {
+        #expect(ProtocolRegistry.isValidScheme("com.epicgames.launcher"))
+        #expect(ProtocolRegistry.isValidScheme("battlenet"))
+        #expect(!ProtocolRegistry.isValidScheme("*"))
+        #expect(!ProtocolRegistry.isValidScheme(".txt"))
+        #expect(!ProtocolRegistry.isValidScheme("1abc"))
+    }
+}
+
+struct ProtocolCommandTests {
+    @Test func substitutesTheLink() {
+        let quoted = RegisteredProtocol(scheme: "m", description: nil, command: #""C:\Apps\Launcher.exe" "%1""#)
+        #expect(quoted.arguments(for: "m://login?code=a&b=c") == [#"C:\Apps\Launcher.exe"#, "m://login?code=a&b=c"])
+        let bare = RegisteredProtocol(scheme: "e", description: nil, command: #""C:\Epic\Launcher.exe" %1"#)
+        #expect(bare.arguments(for: "e://x") == [#"C:\Epic\Launcher.exe"#, "e://x"])
+        let flagged = RegisteredProtocol(scheme: "b", description: nil, command: #""C:\B\B.exe" --uri="%1" --silent"#)
+        #expect(flagged.arguments(for: "b://y") == [#"C:\B\B.exe"#, "--uri=b://y", "--silent"])
+        let missing = RegisteredProtocol(scheme: "n", description: nil, command: #""C:\N\N.exe""#)
+        #expect(missing.arguments(for: "n://z") == [#"C:\N\N.exe"#, "n://z"])
+    }
+}

@@ -42,6 +42,8 @@ final class GameLibrary {
     private(set) var candidates: [UUID: [ExecutableScanner.Candidate]] = [:]
     private(set) var winetricksJobs: [UUID: WinetricksJob] = [:]
     private(set) var compatReports: [UUID: CompatReport] = [:]
+    var linkHandlers: [LinkHandler] = []
+    var linkScanCache: [String: (stamp: Date, protocols: [RegisteredProtocol])] = [:]
     private(set) var compatLoading: Set<UUID> = []
     var compatSheetGameID: UUID?
     private var knownWinetricksVerbs: Set<String> = []
@@ -74,6 +76,7 @@ final class GameLibrary {
         Paths.ensureDirectories()
         load()
         syncAllSteamLibraries(announce: false)
+        refreshLinkHandlers()
         startSteamLibraryWatcher()
     }
 
@@ -446,6 +449,7 @@ final class GameLibrary {
         states[id] = .idle
         let elapsed = Date().timeIntervalSince(started)
         update(id) { $0.totalPlaytime += elapsed }
+        refreshLinkHandlers()
         if let game = game(id), game.isSteamLauncher {
             syncSteamLibrary(id)
         } else if let game = game(id) {

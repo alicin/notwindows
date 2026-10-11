@@ -269,6 +269,17 @@ struct GameSettingsForm: View {
             Text("Applies when the prefix is created or reset, and disables the components at launch.")
         }
 
+        let links = library.linkHandlers.filter { $0.gameIDs.contains(gameID) }
+        if !links.isEmpty {
+            Section {
+                ForEach(links) { LinkHandlerRow(handler: $0) }
+            } header: {
+                Text("Links")
+            } footer: {
+                Text("Browser sign-ins that end with these links are handed back to this game.")
+            }
+        }
+
         DLLOverridesSection(gameID: gameID)
         EnvironmentSection(gameID: gameID)
 
