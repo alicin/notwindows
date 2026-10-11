@@ -9,8 +9,8 @@ enum WineRosetta {
         Bundle.main.url(forResource: "winerosetta", withExtension: "dll", subdirectory: "winerosetta")
     }
 
-    static func d9vkDLL(in runtime: Runtime) -> URL {
-        runtime.renderer("d9vk").appendingPathComponent("wine/i386-windows/d3d9.dll")
+    static func d9vkDLL(in runtime: Runtime, settings: GameSettings) -> URL {
+        runtime.renderer(WineEnvironment.d9vkRendererName(for: settings)).appendingPathComponent("wine/i386-windows/d3d9.dll")
     }
 
     /// Brings `directory` in line with `enabled`. Files the user had there before are moved aside, never deleted.

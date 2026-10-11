@@ -28,7 +28,7 @@ struct WineEnvironmentTests {
         let e = env { $0.vulkanDriver = .moltenVK }
         #expect(e["WINEDLLPATH_DXMT"] == "/R/Contents/Frameworks/renderer/dxmt/wine")
         #expect(e["WINEDLLPATH_PREPEND"] == "/R/Contents/Frameworks/renderer/dxmt/wine")
-        #expect(e["WINEDLLPATH_D9VK"] == "/R/Contents/Frameworks/renderer/d9vk/wine")
+        #expect(e["WINEDLLPATH_D9VK"] == "/R/Contents/Frameworks/renderer/dxvk/wine")
         #expect(e["WINEDLLPATH_CNCD"] == "/R/Contents/Frameworks/renderer/cnc_ddraw/wine")
         #expect(e["WINEDLLPATH_DXVK"] == nil)
         #expect(e["WINEDLLPATH_D3DMETAL"] == nil)
@@ -48,6 +48,10 @@ struct WineEnvironmentTests {
         #expect(env { $0.direct3DBackend = .dxvk; $0.vulkanDriver = .moltenVK }["WINEDLLPATH_DXVK"]?.contains("/dxvk/") == true)
         #expect(env { $0.direct3DBackend = .dxvk; $0.vulkanDriver = .kosmicKrisp; $0.dxvkVersion = .legacy }["WINEDLLPATH_DXVK"]?.contains("/dxvk/") == true)
         #expect(env { $0.direct3DBackend = .dxvk }["DXVK_SHADER_CACHE_PATH"] == "/C/dxvk")
+        #expect(env { $0.vulkanDriver = .moltenVK }["WINEDLLPATH_D9VK"] == "/R/Contents/Frameworks/renderer/dxvk/wine")
+        #expect(env { $0.vulkanDriver = .kosmicKrisp }["WINEDLLPATH_D9VK"] == "/R/Contents/Frameworks/renderer/d9vk/wine")
+        #expect(env { $0.vulkanDriver = .kosmicKrisp; $0.dxvkVersion = .legacy }["WINEDLLPATH_D9VK"] == "/R/Contents/Frameworks/renderer/dxvk/wine")
+        #expect(env { $0.vulkanDriver = .moltenVK }["DXVK_STATE_CACHE_PATH"] == "/C/dxvk")
     }
 
     @Test func togglesAndOverrides() {

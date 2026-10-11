@@ -414,7 +414,7 @@ final class GameLibrary {
                 directory: executable.deletingLastPathComponent(),
                 enabled: session.game.settings.wineRosetta,
                 dll: WineRosetta.bundledDLL,
-                d9vk: session.game.settings.direct3D9Backend == .d9vk ? WineRosetta.d9vkDLL(in: session.runtime) : nil
+                d9vk: session.game.settings.direct3D9Backend == .d9vk ? WineRosetta.d9vkDLL(in: session.runtime, settings: session.game.settings) : nil
             )
         } catch {
             states[id] = .idle

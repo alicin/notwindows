@@ -78,9 +78,11 @@ enum WineEnvironment {
             if let hud = settings.dxvkHUD.envValue { env["DXVK_HUD"] = hud }
             if let cacheDirectory {
                 env["DXVK_SHADER_CACHE_PATH"] = cacheDirectory.appendingPathComponent("dxvk").path
+                // DXVK 1.x/2.x keep a pipeline state cache; 3.x relies on the driver instead.
+                env["DXVK_STATE_CACHE_PATH"] = cacheDirectory.appendingPathComponent("dxvk").path
             }
         }
-        if settings.direct3D9Backend == .d9vk { env["WINEDLLPATH_D9VK"] = rendererPath("d9vk") }
+        if settings.direct3D9Backend == .d9vk { env["WINEDLLPATH_D9VK"] = rendererPath(d9vkRendererName(for: settings)) }
         if settings.cncDDraw { env["WINEDLLPATH_CNCD"] = rendererPath("cnc_ddraw") }
 
         var overrides = extraDLLOverrides
@@ -97,6 +99,15 @@ enum WineEnvironment {
             env[variable.key.trimmingCharacters(in: .whitespaces)] = variable.value
         }
         return env
+    }
+
+    /// D9VK 3.x needs Vulkan 1.3, which MoltenVK lacks; the `dxvk` folder carries D9VK 2.3 for that case.
+    static func d9vkRendererName(for settings: GameSettings) -> String {
+        switch settings.dxvkVersion {
+        case .legacy: "dxvk"
+        case .modern: "d9vk"
+        case .automatic: settings.vulkanDriver == .moltenVK ? "dxvk" : "d9vk"
+        }
     }
 
     static func dxvkRendererName(for settings: GameSettings) -> String {

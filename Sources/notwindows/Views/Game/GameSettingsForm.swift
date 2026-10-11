@@ -158,10 +158,10 @@ struct GameSettingsForm: View {
             Picker("Vulkan driver", selection: setting(\.vulkanDriver)) {
                 ForEach(VulkanDriver.allCases) { Text($0.title).tag($0) }
             }
-            Picker("DXVK version", selection: setting(\.dxvkVersion)) {
+            Picker("DXVK / D9VK version", selection: setting(\.dxvkVersion)) {
                 ForEach(DXVKVersion.allCases) { Text($0.title).tag($0) }
             }
-            .disabled(game.settings.direct3DBackend != .dxvk)
+            .disabled(game.settings.direct3DBackend != .dxvk && game.settings.direct3D9Backend != .d9vk)
             Toggle(isOn: setting(\.dxvkAsync)) {
                 Text("Asynchronous shader compilation")
                 Text("Reduces stutter while shaders compile, at the cost of brief visual glitches.")
@@ -173,7 +173,7 @@ struct GameSettingsForm: View {
         } header: {
             Text("Vulkan")
         } footer: {
-            Text("Used by DXVK and D9VK. Automatic picks DXVK 3.x with KosmicKrisp and 1.10 with MoltenVK.")
+            Text("Used by DXVK and D9VK. Automatic picks the 3.x builds with KosmicKrisp, and DXVK 1.10 / D9VK 2.3 with MoltenVK, which lacks the Vulkan 1.3 features 3.x needs.")
         }
     }
 
