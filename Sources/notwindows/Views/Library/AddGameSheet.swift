@@ -1,5 +1,11 @@
 import SwiftUI
 
+private enum PrefixSelection: Hashable {
+    case new
+    case existing(URL)
+    case chooseFolder
+}
+
 struct AddGameSheet: View {
     @Environment(GameLibrary.self) private var library
     @Environment(AppNavigation.self) private var navigation
@@ -12,6 +18,9 @@ struct AddGameSheet: View {
     @State private var palette: IconPalette?
     @State private var backdrop: NSImage?
     @State private var isTargeted = false
+    @State private var prefix = PrefixSelection.new
+    /// A prefix picked from disk that no library game uses yet.
+    @State private var folderPrefix: URL?
 
     var body: some View {
         VStack(spacing: 18) {
@@ -26,15 +35,14 @@ struct AddGameSheet: View {
 
             Form {
                 TextField("Name", text: $name, prompt: Text("Game name"))
+                prefixPicker
             }
             .formStyle(.grouped)
             .scrollDisabled(true)
-            .frame(height: 64)
+            .frame(height: 108)
             .padding(.horizontal, -20)
 
-            Text(mode == .existing
-                 ? "Point at the game's .exe — it can live anywhere on your Mac. notwindows gives it its own Windows prefix and settings."
-                 : "notwindows creates a fresh prefix and runs the installer. When it finishes you'll pick the game's executable.")
+            Text(explanation)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -52,6 +60,78 @@ struct AddGameSheet: View {
         }
         .padding(24)
         .frame(width: 520)
+    }
+
+    private var prefixPicker: some View {
+        Picker("Windows prefix", selection: $prefix) {
+            Text("New Prefix").tag(PrefixSelection.new)
+            if !library.prefixChoices.isEmpty || folderPrefix != nil {
+                Divider()
+                ForEach(library.prefixChoices) { choice in
+                    Text(choice.title).tag(PrefixSelection.existing(choice.url))
+                }
+                if let folderPrefix {
+                    Text(Self.displayPath(folderPrefix)).tag(PrefixSelection.existing(folderPrefix))
+                }
+            }
+            Divider()
+            Text("Other Folder…").tag(PrefixSelection.chooseFolder)
+        }
+        .onChange(of: prefix) { old, new in
+            guard new == .chooseFolder else { return }
+            prefix = old
+            Task { @MainActor in choosePrefixFolder() }
+        }
+    }
+
+    private var explanation: String {
+        switch (mode, sharedPrefixName) {
+        case (.existing, nil):
+            "Point at the game's .exe — it can live anywhere on your Mac. notwindows gives it its own Windows prefix and settings."
+        case (.existing, let owner?):
+            "The game runs in \(owner)'s prefix, sharing its C: drive and installed programs. Its settings stay its own."
+        case (.installer, nil):
+            "notwindows creates a fresh prefix and runs the installer. When it finishes you'll pick the game's executable."
+        case (.installer, let owner?):
+            "notwindows runs the installer in \(owner)'s prefix. When it finishes you'll pick the game's executable."
+        }
+    }
+
+    private var selectedPrefix: URL? {
+        if case .existing(let url) = prefix { return url }
+        return nil
+    }
+
+    private var sharedPrefixName: String? {
+        guard let url = selectedPrefix else { return nil }
+        if let choice = library.prefixChoices.first(where: { GameLibrary.key($0.url) == GameLibrary.key(url) }) { return choice.title }
+        return "the chosen folder"
+    }
+
+    private static func displayPath(_ url: URL) -> String {
+        (url.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private func choosePrefixFolder() {
+        guard var url = Panels.chooseFolder(message: "Choose a Wine prefix (the folder that holds drive_c)") else { return }
+        if url.lastPathComponent == "drive_c" { url.deleteLastPathComponent() }
+        guard GameLibrary.isPrefix(url) else {
+            let alert = NSAlert()
+            alert.messageText = "That folder isn't a Wine prefix"
+            alert.informativeText = "Pick the folder that contains drive_c and system.reg."
+            alert.runModal()
+            return
+        }
+        select(prefix: url)
+    }
+
+    private func select(prefix url: URL) {
+        if let choice = library.prefixChoices.first(where: { GameLibrary.key($0.url) == GameLibrary.key(url) }) {
+            prefix = .existing(choice.url)
+        } else {
+            folderPrefix = url.standardizedFileURL
+            prefix = .existing(url.standardizedFileURL)
+        }
     }
 
     private var dropWell: some View {
@@ -135,6 +215,7 @@ struct AddGameSheet: View {
         if name.isEmpty || mode == .installer {
             name = GameLibrary.suggestedName(for: url)
         }
+        if let containing = GameLibrary.containingPrefix(of: url) { select(prefix: containing) }
     }
 
     private func commit() {
@@ -142,10 +223,10 @@ struct AddGameSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         switch mode {
         case .existing:
-            let game = library.addGame(executable: file, name: trimmed)
+            let game = library.addGame(executable: file, name: trimmed, prefix: selectedPrefix)
             navigation.selection = .game(game.id)
         case .installer:
-            let game = library.installGame(setup: file, name: trimmed)
+            let game = library.installGame(setup: file, name: trimmed, prefix: selectedPrefix)
             navigation.selection = .game(game.id)
         }
         dismiss()

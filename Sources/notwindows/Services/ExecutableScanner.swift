@@ -12,16 +12,17 @@ enum ExecutableScanner {
     private static let skippedDirectories: Set<String> = ["windows", "temp", "cache", "_commonredist", "redist", "redistributables", "directx", "vcredist", "dotnet", "__installer", "support"]
     private static let noisyNames = ["unins", "setup", "install", "redist", "vcredist", "dxsetup", "crash", "report", "helper", "updater", "update", "launcherpatcher", "cefprocess", "webhelper", "dotnet", "uploader", "benchmark", "touchup", "cleanup", "easyanticheat_setup", "ue4prereq", "prereq"]
 
-    static func scan(_ driveC: URL, limit: Int = 40) -> [Candidate] {
+    /// With `createdAfter`, files an installer just wrote rank first, which matters in prefixes shared with other games.
+    static func scan(_ driveC: URL, createdAfter: Date? = nil, limit: Int = 40) -> [Candidate] {
         guard let enumerator = FileManager.default.enumerator(
             at: driveC,
-            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey],
+            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey, .creationDateKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
 
         var results: [Candidate] = []
         for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey])
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey, .creationDateKey])
             let name = url.lastPathComponent.lowercased()
             if values?.isSymbolicLink == true {
                 enumerator.skipDescendants()
@@ -35,7 +36,9 @@ enum ExecutableScanner {
             }
             guard url.pathExtension.lowercased() == "exe" else { continue }
             let size = Int64(values?.fileSize ?? 0)
-            results.append(Candidate(url: url, size: size, score: score(url, name: name, size: size)))
+            var score = score(url, name: name, size: size)
+            if let createdAfter, let created = values?.creationDate, created >= createdAfter { score += 40 }
+            results.append(Candidate(url: url, size: size, score: score))
         }
         return results
             .sorted { $0.score != $1.score ? $0.score > $1.score : $0.size > $1.size }

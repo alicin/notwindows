@@ -86,9 +86,13 @@ struct GameSettingsForm: View {
         } header: {
             Text("Compatibility")
         } footer: {
-            Text(game.isSteamGame
-                 ? "Steam games run next to the Steam client, so they use its engine. Windows version and other registry settings apply to this game only."
-                 : "Switching engines on an existing prefix makes Wine update it on next launch.")
+            if game.isSteamGame {
+                Text("Steam games run next to the Steam client, so they use its engine. Windows version and other registry settings apply to this game only.")
+            } else if game.externalPrefixPath != nil, !library.prefixMates(of: game).isEmpty {
+                Text("While another game in this prefix is running, this one uses that game's engine. Windows version and other registry settings apply to this game only.")
+            } else {
+                Text("Switching engines on an existing prefix makes Wine update it on next launch.")
+            }
         }
 
         Section("Prefix") {
@@ -102,8 +106,19 @@ struct GameSettingsForm: View {
                         .disabled(!game.driveC.exists)
                 }
             }
-            if game.externalPrefixPath != nil {
+            if let owner = library.prefixOwner(of: game) {
+                Label("Shares \(owner.name)'s prefix.", systemImage: "person.2")
+                    .foregroundStyle(.secondary)
+            } else if game.externalPrefixPath?.contains(".app/") == true {
                 Label("Imported wrapper — the prefix lives inside the original app bundle.", systemImage: "shippingbox")
+                    .foregroundStyle(.secondary)
+            } else if game.externalPrefixPath != nil {
+                Label("Uses an existing prefix folder.", systemImage: "folder")
+                    .foregroundStyle(.secondary)
+            }
+            let guests = game.externalPrefixPath == nil ? library.prefixMates(of: game) : []
+            if !guests.isEmpty {
+                Label("Also used by \(guests.map(\.name).formatted(.list(type: .and))).", systemImage: "person.2")
                     .foregroundStyle(.secondary)
             }
         }
@@ -299,7 +314,7 @@ struct GameSettingsForm: View {
         Section {
             if game.externalPrefixPath == nil {
                 Button("Reset Prefix…", role: .destructive) { confirmReset() }
-                    .disabled(library.state(of: gameID).isBusy)
+                    .disabled(([game] + library.prefixMates(of: game)).contains { library.state(of: $0.id).isBusy })
             }
             Button("Remove from Library…", role: .destructive) {
                 RemoveGameConfirmation.present(game: game, library: library) { navigation.selection = .allGames }
@@ -312,7 +327,9 @@ struct GameSettingsForm: View {
     private func confirmReset() {
         let alert = NSAlert()
         alert.messageText = "Reset the prefix for “\(game.name)”?"
+        let guests = library.prefixMates(of: game).map(\.name)
         alert.informativeText = "The current prefix, including anything installed into it and its save files, is moved to the Trash and a fresh one is created."
+            + (guests.isEmpty ? "" : " \(guests.formatted(.list(type: .and))) also \(guests.count == 1 ? "uses" : "use") it and will lose what's installed there.")
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Reset").hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")

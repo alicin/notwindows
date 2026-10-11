@@ -30,12 +30,6 @@ extension GameLibrary {
         games.filter { $0.launcherID == launcherID }
     }
 
-    /// Fragment of a Steam game's Windows command line that identifies its processes.
-    func processFragment(for game: Game) -> String? {
-        guard let folder = game.installDirectory.map({ URL(fileURLWithPath: $0).lastPathComponent }) else { return nil }
-        return "/steamapps/common/\(folder)/"
-    }
-
     // MARK: Library sync
 
     /// Mirrors the games Windows Steam has installed into library entries that share Steam's prefix.
@@ -146,23 +140,5 @@ extension GameLibrary {
         guard let appID = game.steamAppID, let directory = game.executableURL?.deletingLastPathComponent() else { return }
         let file = directory.appendingPathComponent("steam_appid.txt")
         if !file.exists { try? "\(appID)\n".write(to: file, atomically: true, encoding: .utf8) }
-    }
-
-    /// Waits until no process from the game's install folder is left. The Steam client keeps the
-    /// prefix's Wine server alive, so `wineserver -w` can't be used for these games.
-    func waitForSteamGameExit(_ game: Game) async {
-        guard let fragment = processFragment(for: game) else { return }
-        var misses = 0
-        while misses < 2 {
-            try? await Task.sleep(for: .seconds(3))
-            misses = await WineProcesses.matching(fragment).isEmpty ? misses + 1 : 0
-        }
-    }
-
-    func stopSteamGame(_ game: Game) {
-        guard let fragment = processFragment(for: game) else { return }
-        Task {
-            for pid in await WineProcesses.matching(fragment) { kill(pid, SIGKILL) }
-        }
     }
 }

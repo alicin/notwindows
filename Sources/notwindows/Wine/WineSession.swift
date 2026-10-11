@@ -44,6 +44,8 @@ struct WineSession {
     let runtime: Runtime
     /// Set when the game runs through rosettax87.
     var x87Loader: URL?
+    /// Set when other games share the prefix, so registry settings go to this game's AppDefaults key.
+    var scopesRegistryToApp = false
 
     var environment: [String: String] {
         var env = WineEnvironment.make(
@@ -75,7 +77,7 @@ struct WineSession {
 
     func applyRegistry(log: URL) async throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("notwindows-\(game.id.uuidString).reg")
-        let scope = game.isSteamGame ? game.executableURL?.lastPathComponent : nil
+        let scope = scopesRegistryToApp ? game.executableURL?.lastPathComponent : nil
         try RegistryWriter.document(for: game.settings, appExecutable: scope).write(to: file, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: file) }
         var env = environment

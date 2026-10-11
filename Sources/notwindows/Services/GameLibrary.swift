@@ -131,6 +131,12 @@ final class GameLibrary {
             for child in steamGames(of: game.id) { remove(child) }
         }
         do {
+            try handOffPrefix(of: game)
+        } catch {
+            report("Couldn't keep \(game.name)'s prefix for the games that share it", error)
+            return
+        }
+        do {
             try FileManager.default.trashItem(at: game.directory, resultingItemURL: nil)
         } catch {
             report("Couldn't move \(game.name) to the Trash", error)
@@ -168,8 +174,9 @@ final class GameLibrary {
     // MARK: Adding games
 
     @discardableResult
-    func addGame(executable: URL, name: String? = nil) -> Game {
+    func addGame(executable: URL, name: String? = nil, prefix: URL? = nil) -> Game {
         var game = Game(name: name ?? Self.suggestedName(for: executable), executablePath: executable.path)
+        if let prefix { shareGame(&game, prefix: prefix) }
         if WineRosetta.isLegacyWoW(executable) {
             game.settings.wineRosetta = true
             game.settings.direct3D9Backend = .d9vk
@@ -186,22 +193,29 @@ final class GameLibrary {
     }
 
     @discardableResult
-    func installGame(setup: URL, name: String) -> Game {
-        let game = Game(name: name)
+    func installGame(setup: URL, name: String, prefix: URL? = nil) -> Game {
+        var created = Game(name: name)
+        if let prefix { shareGame(&created, prefix: prefix) }
+        let game = created
         save(game)
         if let image = PEIconExtractor.image(fromExecutableAt: setup) { setIcon(image, for: game.id) }
         Task {
             guard await prepare(game.id), let session = session(for: game.id) else { return }
             states[game.id] = .preparing("Running installer…")
+            let started = Date()
             do {
                 _ = try await session.run(executable: setup, log: game.lastLogURL)
-                states[game.id] = .preparing("Waiting for installer to finish…")
-                await session.waitUntilIdle()
+                // With another game running in the prefix the Wine server never goes idle, so trust the installer's
+                // own process to last until it's done.
+                if !prefixMates(of: game).contains(where: { state(of: $0.id).isBusy }) {
+                    states[game.id] = .preparing("Waiting for installer to finish…")
+                    await session.waitUntilIdle()
+                }
             } catch {
                 report("The installer couldn't start", error)
             }
             states[game.id] = .idle
-            scanForExecutables(game.id)
+            scanForExecutables(game.id, createdAfter: started)
             show(Toast(symbol: "checkmark.circle.fill", title: "Installer finished", detail: "Pick \(name)'s executable to finish adding it.", tint: .green), for: game.id)
         }
         return game
@@ -222,11 +236,11 @@ final class GameLibrary {
         }
     }
 
-    func scanForExecutables(_ id: UUID) {
+    func scanForExecutables(_ id: UUID, createdAfter: Date? = nil) {
         guard let game = game(id) else { return }
         let driveC = game.driveC
         Task.detached(priority: .userInitiated) {
-            let found = ExecutableScanner.scan(driveC)
+            let found = ExecutableScanner.scan(driveC, createdAfter: createdAfter)
             await MainActor.run { self.candidates[id] = found }
         }
     }
@@ -235,6 +249,8 @@ final class GameLibrary {
         update(id) { game in
             game.executablePath = url.path
             game.workingDirectory = nil
+            // In a shared prefix, registry settings are keyed by executable name.
+            if game.externalPrefixPath != nil { game.appliedRegistryFingerprint = nil }
             if game.name.isEmpty || game.name == "New Game" || url.lastPathComponent.lowercased() == "steam.exe" {
                 game.name = Self.suggestedName(for: url)
             }
@@ -326,6 +342,10 @@ final class GameLibrary {
             game.externalPrefixPath = launcher.prefixURL.path
             game.settings.msync = launcher.settings.msync
             game.settings.esync = launcher.settings.esync
+        } else if let partner = prefixMates(of: game).first(where: { state(of: $0.id).isBusy }) {
+            game.engineName = partner.engineName
+            game.settings.msync = partner.settings.msync
+            game.settings.esync = partner.settings.esync
         }
         guard let runtime = runtime.current else {
             alert = AppAlert(title: "Runtime not installed", message: "Install the Sikarugir runtime from Settings › Runtime before running games.")
@@ -341,7 +361,9 @@ final class GameLibrary {
             alert = AppAlert(title: "Rosetta is required", message: "Wine engines are Intel builds. Install Rosetta by running:\n\nsoftwareupdate --install-rosetta --agree-to-license")
             return nil
         }
-        return WineSession(game: game, engine: engine, runtime: runtime)
+        var session = WineSession(game: game, engine: engine, runtime: runtime)
+        session.scopesRegistryToApp = game.isSteamGame || (game.externalPrefixPath != nil && !prefixMates(of: game).isEmpty)
+        return session
     }
 
     /// Creates the prefix and syncs registry-backed settings. Returns false if something failed.
@@ -358,7 +380,10 @@ final class GameLibrary {
                 try await session.initializePrefix(log: session.game.lastLogURL)
             }
             let fingerprint = session.game.settings.registryFingerprint
-            if session.game.appliedRegistryFingerprint != fingerprint || session.game.appliedRegistryEngine != session.engine.name {
+            // A game still waiting for its executable has no name to scope settings to, and writing them prefix-wide
+            // would overwrite the other games' settings.
+            let canApply = !session.scopesRegistryToApp || session.game.executableURL != nil
+            if canApply, session.game.appliedRegistryFingerprint != fingerprint || session.game.appliedRegistryEngine != session.engine.name {
                 states[id] = .preparing("Applying settings…")
                 try await session.applyRegistry(log: session.game.lastLogURL)
                 update(id) {
@@ -438,8 +463,8 @@ final class GameLibrary {
             _ = try session.launch(executable: executable, arguments: arguments,
                                    directory: session.game.resolvedWorkingDirectory, log: log) { _ in
                 Task { @MainActor in
-                    if session.game.isSteamGame {
-                        await self.waitForSteamGameExit(session.game)
+                    if let game = self.game(id), game.isSteamGame || !self.prefixMates(of: game).isEmpty {
+                        if let fragment = self.processFragment(for: game) { await self.waitForExit(matching: fragment) }
                     } else {
                         await session.waitUntilIdle()
                     }
@@ -472,8 +497,8 @@ final class GameLibrary {
     }
 
     func stop(_ id: UUID) {
-        if let game = game(id), game.isSteamGame {
-            stopSteamGame(game)
+        if let game = game(id), game.isSteamGame || prefixMates(of: game).contains(where: { state(of: $0.id).isBusy }) {
+            killProcesses(of: game)
             return
         }
         guard let session = session(for: id) else { return }

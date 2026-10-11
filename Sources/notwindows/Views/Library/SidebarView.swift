@@ -159,9 +159,16 @@ enum RemoveGameConfirmation {
     static func present(game: Game, library: GameLibrary, onRemoved: () -> Void) {
         let alert = NSAlert()
         alert.messageText = "Remove “\(game.name)”?"
-        alert.informativeText = game.externalPrefixPath == nil
-            ? "The game's Windows prefix, including everything installed in it, will be moved to the Trash."
-            : "This game's notwindows settings will be moved to the Trash. The imported wrapper is left untouched."
+        let guests = game.externalPrefixPath == nil ? library.prefixMates(of: game).map(\.name) : []
+        if !guests.isEmpty {
+            alert.informativeText = "This game's notwindows settings will be moved to the Trash. Its Windows prefix stays, because \(guests.formatted(.list(type: .and))) \(guests.count == 1 ? "uses" : "use") it."
+        } else if game.externalPrefixPath == nil {
+            alert.informativeText = "The game's Windows prefix, including everything installed in it, will be moved to the Trash."
+        } else if game.externalPrefixPath?.contains(".app/") == true {
+            alert.informativeText = "This game's notwindows settings will be moved to the Trash. The imported wrapper is left untouched."
+        } else {
+            alert.informativeText = "This game's notwindows settings will be moved to the Trash. The prefix it runs in is left untouched."
+        }
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Move to Trash").hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")
