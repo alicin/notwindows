@@ -526,6 +526,8 @@ final class GameLibrary {
 
     private func finishWinetricks(_ id: UUID, status: Int32, restoring previous: RunState) {
         guard var job = winetricksJobs[id] else { return }
+        // Verbs like dotnet48 switch the prefix's Windows version; re-apply the game's own settings on next launch.
+        update(id) { $0.appliedRegistryFingerprint = nil }
         if job.status != .cancelled { job.status = status == 0 ? .succeeded : .failed(status) }
         job.process = nil
         winetricksJobs[id] = job
