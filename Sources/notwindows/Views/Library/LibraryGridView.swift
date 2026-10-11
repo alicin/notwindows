@@ -70,7 +70,8 @@ struct LibraryGridView: View {
                     }
                 }
             }
-            .padding(28)
+            // 20pt matches the navigation title's inset, so the content lines up under it.
+            .padding(20)
             .animation(.smooth(duration: 0.35), value: needsSetup)
             .animation(.smooth(duration: 0.35), value: featured?.id)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: games.map(\.id))

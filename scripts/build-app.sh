@@ -8,8 +8,14 @@ if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app ]; then
   export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 
-swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/notwindows"
+# SwiftPM's Swift Build engine records the deployment target as the SDK version, and macOS then runs the app in
+# compatibility mode with the old window design and its redraw glitches. Record the real SDK instead.
+MIN_MACOS=14.0 # keep in step with Package.swift
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+LINK_FLAGS=(-Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS" -Xlinker "$SDK_VERSION")
+
+swift build -c "$CONFIG" "${LINK_FLAGS[@]}"
+BIN="$(swift build -c "$CONFIG" "${LINK_FLAGS[@]}" --show-bin-path)/notwindows"
 
 if [ ! -f Resources/AppIcon.icns ]; then
   swift scripts/make-icon.swift Resources/AppIcon.icns

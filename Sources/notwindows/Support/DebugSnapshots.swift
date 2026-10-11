@@ -34,6 +34,12 @@ enum DebugSnapshots {
             try? FileManager.default.createDirectory(atPath: pieces[0], withIntermediateDirectories: true)
             handle(pieces[1], library: library, navigation: navigation)
             burst(window: window, directory: pieces[0], frame: 0)
+        case "activate":
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first { $0.isVisible && $0.frame.width > 300 }?.makeKeyAndOrderFront(nil)
+        case "responder":
+            let responder = NSApp.keyWindow?.firstResponder
+            print("first responder:", responder.map { String(describing: type(of: $0)) } ?? "none")
         case "select":
             switch argument {
             case "all": navigation.selection = .allGames
@@ -86,8 +92,8 @@ enum DebugSnapshots {
 
     private static func burst(window: NSWindow, directory: String, frame: Int) {
         guard frame < 30 else { return }
-        // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageNominalResolution
-        if let image = windowImage?(.null, 1 << 3, UInt32(window.windowNumber), 1 << 0 | 1 << 4)?.takeRetainedValue() {
+        // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | kCGWindowImageBestResolution
+        if let image = windowImage?(.null, 1 << 3, UInt32(window.windowNumber), 1 << 0 | 1 << 3)?.takeRetainedValue() {
             let rep = NSBitmapImageRep(cgImage: image)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(directory)/\(String(format: "%02d", frame)).png"))
         }
