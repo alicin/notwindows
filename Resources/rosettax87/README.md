@@ -1,9 +1,9 @@
 # rosettax87
 
 Prebuilt `runtime_loader` and `libRuntimeRosettax87` from
-[alicin/rosettax87_jit](https://github.com/alicin/rosettax87_jit/tree/build-fix-apple-clang) at commit `68f79f9`,
-a fork of [Lifeisawful/rosettax87_jit](https://github.com/Lifeisawful/rosettax87_jit) (MIT, see LICENSE) with a build fix
-for newer Apple clang.
+[alicin/rosettax87_jit](https://github.com/alicin/rosettax87_jit) at commit `bf4ac51`,
+a fork of [Lifeisawful/rosettax87_jit](https://github.com/Lifeisawful/rosettax87_jit) (MIT, see LICENSE) with build fixes
+for newer Apple clang. The translator must stay unoptimized; an optimized build emits wrong x87 code.
 
 notwindows copies these to `Tools/rosettax87`, signs the loader with `entitlements.plist` (it needs the debugger
 entitlement to patch Rosetta inside the game process), and points Wine's `ROSETTA_X87_PATH` hook at it.
@@ -11,7 +11,7 @@ entitlement to patch Rosetta inside the game process), and points Wine's `ROSETT
 Rebuild:
 
 ```bash
-git clone --recursive -b build-fix-apple-clang https://github.com/alicin/rosettax87_jit
+git clone --recursive https://github.com/alicin/rosettax87_jit
 ```
 
 ```bash
