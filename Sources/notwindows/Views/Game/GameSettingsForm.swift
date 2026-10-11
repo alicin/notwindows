@@ -32,6 +32,8 @@ struct GameSettingsForm: View {
             ExecutablePickerSection(gameID: gameID)
         }
 
+        SmartSetupBanner(gameID: gameID)
+
         Section("Game") {
             TextField("Name", text: library.binding(gameID, \.name, default: ""))
             LabeledContent("Executable") {
@@ -411,5 +413,52 @@ extension Binding {
                 if let string = newValue as? String, string.isEmpty { wrappedValue = nil } else { wrappedValue = newValue }
             }
         )
+    }
+}
+
+/// Nudges toward Smart Setup when there are recommended changes the game doesn't have yet.
+private struct SmartSetupBanner: View {
+    @Environment(GameLibrary.self) private var library
+    let gameID: UUID
+
+    var body: some View {
+        let pending = pendingCount
+        if library.compatLoading.contains(gameID) {
+            Section {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Looking up fixes for this game…").foregroundStyle(.secondary)
+                }
+            }
+        } else if pending > 0 || library.compatReports[gameID] == nil {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "sparkles")
+                        .font(.title3)
+                        .foregroundStyle(.purple)
+                        .symbolEffect(.pulse, options: .repeating, isActive: pending > 0)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pending > 0 ? "\(pending) suggested change\(pending == 1 ? "" : "s")" : "Smart Setup")
+                            .font(.headline)
+                        Text(pending > 0
+                             ? "Based on the executable and known fixes for this game."
+                             : "Scan the executable and look up known fixes for this game.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(pending > 0 ? "Review…" : "Scan…") { library.compatSheetGameID = gameID }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.purple)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var pendingCount: Int {
+        guard let report = library.compatReports[gameID], let game = library.game(gameID) else { return 0 }
+        let installed = library.installedWinetricksVerbs(gameID)
+        return report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, installedVerbs: installed) }.count
     }
 }

@@ -50,3 +50,7 @@ enum Format {
         ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 }
+
+extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}

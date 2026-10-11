@@ -41,6 +41,15 @@ final class GameLibrary {
     private(set) var toast: (toast: Toast, gameID: UUID?)?
     private(set) var candidates: [UUID: [ExecutableScanner.Candidate]] = [:]
     private(set) var winetricksJobs: [UUID: WinetricksJob] = [:]
+    private(set) var compatReports: [UUID: CompatReport] = [:]
+    private(set) var compatLoading: Set<UUID> = []
+    var compatSheetGameID: UUID?
+    private var knownWinetricksVerbs: Set<String> = []
+
+    /// Applies suggested settings (never installs) when a game is added.
+    var autoApplyCompat = UserDefaults.standard.object(forKey: "autoApplyCompat") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoApplyCompat, forKey: "autoApplyCompat") }
+    }
     var alert: AppAlert?
 
     let engines: EngineManager
@@ -159,7 +168,11 @@ final class GameLibrary {
         }
         save(game)
         refreshIconFromExecutable(game.id)
-        Task { await prepare(game.id) }
+        let id = game.id
+        Task {
+            await prepare(id)
+            await analyzeCompatibility(id, autoApply: autoApplyCompat)
+        }
         return game
     }
 
@@ -217,6 +230,58 @@ final class GameLibrary {
         }
         candidates[id] = nil
         if icons[id] == nil || PEIconExtractor.image(fromExecutableAt: url) != nil { refreshIconFromExecutable(id) }
+        Task { await analyzeCompatibility(id, autoApply: autoApplyCompat) }
+    }
+
+    // MARK: Compatibility suggestions
+
+    func installedWinetricksVerbs(_ id: UUID) -> Set<String> {
+        guard let prefix = game(id)?.prefixURL else { return [] }
+        return Set(WinetricksCatalog.installedVerbs(in: prefix))
+    }
+
+    func analyzeCompatibility(_ id: UUID, match: CompatMatch? = nil, autoApply: Bool = false) async {
+        guard let game = game(id), !compatLoading.contains(id) else { return }
+        compatLoading.insert(id)
+        defer { compatLoading.remove(id) }
+
+        if knownWinetricksVerbs.isEmpty, let script = try? await runtime.winetricksScript(),
+           let text = try? String(contentsOf: script, encoding: .utf8) {
+            knownWinetricksVerbs = Set(WinetricksCatalog.parse(text).map(\.name))
+        }
+        let report = await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match)
+        compatReports[id] = report
+        guard autoApply else { return }
+
+        let installed = installedWinetricksVerbs(id)
+        let pending = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: self.game(id) ?? game, installedVerbs: installed) }
+        let settings = pending.filter { !$0.action.needsInstall }
+        let installs = pending.filter { $0.action.needsInstall }
+        if !settings.isEmpty { applyCompat(settings, to: id) }
+
+        var parts: [String] = []
+        if !settings.isEmpty { parts.append("applied \(settings.count) setting\(settings.count == 1 ? "" : "s")") }
+        if !installs.isEmpty { parts.append("\(installs.count) install\(installs.count == 1 ? "" : "s") to review") }
+        if let warning = report.warnings.first, report.executable?.antiCheat.isEmpty == false {
+            show(Toast(symbol: "exclamationmark.shield.fill", title: "\(game.name): anti-cheat detected", detail: warning, tint: .orange), for: id)
+        } else if !parts.isEmpty {
+            let matched = report.match.map { " for \($0.title)" } ?? ""
+            show(Toast(symbol: "sparkles", title: "Smart setup\(matched)", detail: parts.joined(separator: " · ").capitalizedFirst, tint: .purple), for: id)
+        }
+    }
+
+    /// Applies setting changes in one save and queues any winetricks installs.
+    func applyCompat(_ suggestions: [CompatSuggestion], to id: UUID) {
+        let changes = suggestions.filter { !$0.action.needsInstall }
+        if !changes.isEmpty {
+            update(id) { game in
+                for suggestion in changes { suggestion.action.apply(to: &game) }
+            }
+        }
+        let verbs = suggestions.compactMap { suggestion -> String? in
+            if case .winetricks(let verb) = suggestion.action { return verb } else { return nil }
+        }
+        if !verbs.isEmpty { startWinetricks(verbs, force: false, unattended: true, for: id) }
     }
 
     nonisolated static func suggestedName(for executable: URL) -> String {

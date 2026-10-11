@@ -28,7 +28,8 @@ struct GameDetailView: View {
     var body: some View {
         if let game = library.game(gameID) {
             VStack(spacing: 0) {
-                GameHeaderView(game: game, showWinetricks: { showingWinetricks = true }, showLog: { showingLog = true })
+                GameHeaderView(game: game, showWinetricks: { showingWinetricks = true }, showLog: { showingLog = true },
+                               showCompat: { library.compatSheetGameID = gameID })
 
                 GameTabBar(selection: $tab)
                     .padding(.vertical, 10)
@@ -50,10 +51,16 @@ struct GameDetailView: View {
             .navigationTitle(game.name)
             .sheet(isPresented: $showingWinetricks) { WinetricksSheet(gameID: gameID) }
             .sheet(isPresented: $showingLog) { LogSheet(game: game) }
+            .sheet(isPresented: Binding(get: { library.compatSheetGameID == gameID },
+                                        set: { if !$0 { library.compatSheetGameID = nil } })) {
+                CompatSheet(gameID: gameID)
+            }
             #if DEBUG
             .onAppear {
                 DebugSnapshots.tabHandler = { name in
-                    if name == "winetricks" { showingWinetricks = true } else if let t = GameTab(rawValue: name) { tab = t }
+                    if name == "winetricks" { showingWinetricks = true }
+                    else if name == "smart" { library.compatSheetGameID = gameID }
+                    else if let t = GameTab(rawValue: name) { tab = t }
                 }
             }
             #endif

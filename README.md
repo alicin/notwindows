@@ -31,6 +31,9 @@ notwindows keeps your Windows games in one library. Each game gets its own Windo
 | ![Onboarding](docs/onboarding.png) | ![Engines](docs/settings-engines.png) |
 | **First run:** Rosetta check, then the runtime and engine download in one click | **Engine manager:** browse and install Sikarugir, CrossOver, GPTK and Whisky builds |
 
+<p align="center"><img src="docs/smart-setup.png" width="700" alt="Smart Setup"></p>
+<p align="center"><b>Smart Setup:</b> recognises the game, then suggests settings from its executable, umu-protonfixes, Lutris and ProtonDB</p>
+
 ![Winetricks browser](docs/winetricks.png)
 <p align="center"><b>Winetricks browser:</b> all 567 verbs by category, with search, installed status, multi-select, a live log and cancel</p>
 
@@ -47,6 +50,9 @@ notwindows keeps your Windows games in one library. Each game gets its own Windo
   - **Performance:** MSync, ESync, advertising AVX under Rosetta, and WineRosetta for 32-bit World of Warcraft clients (1.12.1, 2.4.3, 3.3.5a). It's turned on automatically when you add a 32-bit `Wow.exe`.
   - **Input:** ⌘ as Ctrl, ⌥ as Alt, MFi vs HID controllers.
   - **System:** Windows version, log level, skipping Mono/Gecko, DLL overrides, extra environment variables.
+- **Smart Setup:** every new game is scanned and matched to a known title, and recommended settings are applied automatically. Installs always wait for your review in a sheet that shows each change and where it came from.
+  - **From the executable** (offline): the DLLs it imports give away the DirectX version (picking DXMT, D3DMetal or D9VK), and also cnc-ddraw, Visual C++ runtimes, d3dx, PhysX and .NET needs. 32-bit WoW gets WineRosetta, and anti-cheat (EAC, BattlEye, …) gets a warning.
+  - **Per-game fixes:** the game is matched against Steam and the [umu-database](https://github.com/Open-Wine-Components/umu-database), then its [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes) script is read without being run. Winetricks verbs, DLL overrides, env vars, launch arguments and sync options are translated; Linux-only parts are listed but skipped. If there's no fix, notwindows falls back to [Lutris](https://lutris.net) installer scripts, and shows the [ProtonDB](https://www.protondb.com) tier as a badge.
 - **Adding games:**
   - Point at an installed `.exe`.
   - Run a setup file into a fresh prefix, then pick the game's executable from a ranked list.

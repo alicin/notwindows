@@ -9,6 +9,7 @@ struct GameHeaderView: View {
     let game: Game
     let showWinetricks: () -> Void
     let showLog: () -> Void
+    let showCompat: () -> Void
 
     @State private var isDropTargeted = false
 
@@ -65,6 +66,7 @@ struct GameHeaderView: View {
                             }
                         }
                         Section {
+                            Button("Smart Setup…", systemImage: "sparkles", action: showCompat)
                             Button("Winetricks…", systemImage: "wand.and.stars", action: showWinetricks)
                             Button("Run Program in Prefix…", systemImage: "play.rectangle") {
                                 if let url = Panels.chooseFile(message: "Choose a program to run inside \(game.name)'s prefix", types: Panels.windowsExecutableTypes, directory: game.driveC) {

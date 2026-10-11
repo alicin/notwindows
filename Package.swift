@@ -14,6 +14,7 @@ let package = Package(
             name: "notwindowsTests",
             dependencies: ["notwindows"],
             path: "Tests/notwindowsTests",
+            resources: [.copy("Fixtures")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

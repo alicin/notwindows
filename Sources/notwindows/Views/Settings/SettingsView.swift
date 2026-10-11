@@ -20,6 +20,15 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                Toggle(isOn: Binding(get: { library.autoApplyCompat }, set: { library.autoApplyCompat = $0 })) {
+                    Text("Apply Smart Setup to new games")
+                    Text("Scans each new game and applies recommended settings automatically. Installs always wait for your review.")
+                }
+                Button("Clear Fix Cache") { Task { await CompatSources.shared.clearCache() } }
+            } header: {
+                Text("Smart Setup")
+            }
             Section("Library") {
                 LabeledContent("Games") { Text("\(library.games.count)") }
                 LabeledContent("Location") {
