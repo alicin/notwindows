@@ -64,7 +64,7 @@ struct LibraryGridView: View {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 210), spacing: 24)], spacing: 28) {
                             ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
                                 GameCard(game: game)
-                                    .staggeredAppear(index)
+                                    .staggeredAppear(index, id: game.id)
                             }
                         }
                     }
@@ -175,7 +175,7 @@ struct FeaturedGameBanner: View {
         .shadow(color: (palette?.primary ?? .black).opacity(0.35), radius: 24, y: 12)
         .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .onHover { h in withAnimation(.smooth(duration: 0.5)) { hovering = h } }
-        .onTapGesture { withAnimation(.smooth) { navigation.selection = .game(game.id) } }
+        .onTapGesture { navigation.selection = .game(game.id) }
         .contextMenu { GameContextMenu(game: game) }
     }
 }
@@ -326,7 +326,7 @@ struct GameCard: View {
         .contentShape(Rectangle())
         .onHover { hovering in withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { isHovering = hovering } }
         .onTapGesture(count: 2) { library.play(game.id) }
-        .onTapGesture { withAnimation(.smooth) { navigation.selection = .game(game.id) } }
+        .onTapGesture { navigation.selection = .game(game.id) }
         .contextMenu { GameContextMenu(game: game) }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: state)
         .animation(.spring(response: 0.35, dampingFraction: 0.6), value: game.isFavorite)

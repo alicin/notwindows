@@ -41,12 +41,8 @@ struct GameDetailView: View {
                 ZStack {
                     GameSettingsForm(gameID: gameID, tab: tab)
                         .id(tab)
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .offset(y: 10)),
-                            removal: .opacity
-                        ))
+                        .transition(.paneSwap)
                 }
-                .animation(.smooth(duration: 0.28), value: tab)
             }
             .navigationTitle(game.name)
             .sheet(isPresented: $showingWinetricks) { WinetricksSheet(gameID: gameID) }
@@ -74,35 +70,56 @@ struct GameTabBar: View {
     @State private var hovered: GameTab?
 
     var body: some View {
+        labels(selected: false)
+            .background {
+                Capsule()
+                    .fill(Color.accentColor.gradient)
+                    .shadow(color: .accentColor.opacity(0.35), radius: 5, y: 2)
+                    .matchedGeometryEffect(id: selection, in: namespace, isSource: false)
+            }
+            // The selected label is a white copy clipped to the pill, so its colour follows the pill as it slides
+            // instead of flipping before the pill gets there.
+            .overlay {
+                labels(selected: true)
+                    .allowsHitTesting(false)
+                    .mask {
+                        Capsule().matchedGeometryEffect(id: selection, in: namespace, isSource: false)
+                    }
+            }
+            .padding(4)
+            .background(.quinary, in: Capsule())
+            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: selection)
+            .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+
+    private func labels(selected: Bool) -> some View {
         HStack(spacing: 4) {
-            ForEach(GameTab.allCases) { tab in
-                let selected = tab == selection
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { selection = tab }
-                } label: {
-                    Label(tab.title, systemImage: tab.symbol)
-                        .font(.callout.weight(selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? Color.white : .primary)
-                        .padding(.horizontal, 14)
-                        .frame(height: 30)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(Color.accentColor.gradient)
-                                    .shadow(color: .accentColor.opacity(0.4), radius: 6, y: 2)
-                                    .matchedGeometryEffect(id: "tab", in: namespace)
-                            } else if hovered == tab {
-                                Capsule().fill(.quaternary)
+            ForEach(Array(GameTab.allCases.enumerated()), id: \.element) { index, tab in
+                // One weight for every state, so selecting a tab doesn't change its width and nudge its neighbours.
+                let label = Label(tab.title, systemImage: tab.symbol)
+                    .font(.callout.weight(.medium))
+                    .padding(.horizontal, 14)
+                    .frame(height: 30)
+                if selected {
+                    label.foregroundStyle(.white)
+                } else {
+                    Button {
+                        selection = tab
+                    } label: {
+                        label
+                            .background {
+                                if hovered == tab && tab != selection { Capsule().fill(.quaternary) }
                             }
-                        }
-                        .contentShape(Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .matchedGeometryEffect(id: tab, in: namespace)
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .help("\(tab.title) (⌘\(index + 1))")
+                    .onHover { hovered = $0 ? tab : (hovered == tab ? nil : hovered) }
                 }
-                .buttonStyle(.plain)
-                .onHover { hovered = $0 ? tab : (hovered == tab ? nil : hovered) }
             }
         }
-        .padding(4)
-        .background(.quinary, in: Capsule())
     }
 }
 

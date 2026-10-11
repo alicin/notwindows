@@ -205,6 +205,7 @@ private struct RuntimeSettingsView: View {
                 Text("Sikarugir runtime")
             } footer: {
                 Text("The graphics and media stack from Sikarugir's wrapper template, shared by every game.")
+                    .sectionNote()
             }
 
             if let current = runtime.current {
@@ -262,6 +263,7 @@ private struct LinksSettingsView: View {
                 }
             } footer: {
                 Text("Launchers that sign in through your browser finish by opening a link like jagex:// or com.epicgames.launcher://. notwindows registers a small helper for each of these with macOS and hands the link to the game that registered it.")
+                    .sectionNote()
             }
         }
         .formStyle(.grouped)

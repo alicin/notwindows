@@ -17,8 +17,6 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
         } detail: {
             detail
-                .transition(.opacity)
-                .animation(.smooth(duration: 0.25), value: navigation.selection)
         }
         .searchable(text: $navigation.searchText, placement: .sidebar, prompt: "Search games")
         .toolbar {

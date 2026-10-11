@@ -86,13 +86,16 @@ struct GameSettingsForm: View {
         } header: {
             Text("Compatibility")
         } footer: {
-            if game.isSteamGame {
-                Text("Steam games run next to the Steam client, so they use its engine. Windows version and other registry settings apply to this game only.")
-            } else if game.externalPrefixPath != nil, !library.prefixMates(of: game).isEmpty {
-                Text("While another game in this prefix is running, this one uses that game's engine. Windows version and other registry settings apply to this game only.")
-            } else {
-                Text("Switching engines on an existing prefix makes Wine update it on next launch.")
+            Group {
+                if game.isSteamGame {
+                    Text("Steam games run next to the Steam client, so they use its engine. Windows version and other registry settings apply to this game only.")
+                } else if game.externalPrefixPath != nil, !library.prefixMates(of: game).isEmpty {
+                    Text("While another game in this prefix is running, this one uses that game's engine. Windows version and other registry settings apply to this game only.")
+                } else {
+                    Text("Switching engines on an existing prefix makes Wine update it on next launch.")
+                }
             }
+            .sectionNote()
         }
 
         Section("Prefix") {
@@ -150,9 +153,12 @@ struct GameSettingsForm: View {
         } header: {
             Text("Renderer")
         } footer: {
-            if game.settings.direct3DBackend == .d3dmetal {
-                Text("D3DMetal is Apple's Game Porting Toolkit layer. It's licensed for evaluation only and runs 64-bit games.")
+            Group {
+                if game.settings.direct3DBackend == .d3dmetal {
+                    Text("D3DMetal is Apple's Game Porting Toolkit layer. It's licensed for evaluation only and runs 64-bit games.")
+                }
             }
+            .sectionNote()
         }
 
         ShaderCacheSection(gameID: gameID)
@@ -189,6 +195,7 @@ struct GameSettingsForm: View {
             Text("Vulkan")
         } footer: {
             Text("Used by DXVK and D9VK. Automatic picks the 3.x builds with KosmicKrisp, and DXVK 1.10 / D9VK 2.3 with MoltenVK, which lacks the Vulkan 1.3 features 3.x needs.")
+                .sectionNote()
         }
     }
 
@@ -208,9 +215,12 @@ struct GameSettingsForm: View {
         } header: {
             Text("Synchronization")
         } footer: {
-            if game.isSteamGame {
-                Text("Follows the Steam entry's settings, since all processes in a prefix must use the same mode.")
+            Group {
+                if game.isSteamGame {
+                    Text("Follows the Steam entry's settings, since all processes in a prefix must use the same mode.")
+                }
             }
+            .sectionNote()
         }
         .disabled(game.isSteamGame)
 
@@ -247,6 +257,7 @@ struct GameSettingsForm: View {
             Text("32-bit games on Apple Silicon")
         } footer: {
             Text("Places winerosetta as d3d9.dll next to the game (and D9VK as d9vk.dll when Direct3D 8/9 uses D9VK). Anything already there is moved aside and put back when you turn this off.")
+                .sectionNote()
         }
     }
 
@@ -295,6 +306,7 @@ struct GameSettingsForm: View {
             Text("Prefix components")
         } footer: {
             Text("Applies when the prefix is created or reset, and disables the components at launch.")
+                .sectionNote()
         }
 
         let links = library.linkHandlers.filter { $0.gameIDs.contains(gameID) }
@@ -305,6 +317,7 @@ struct GameSettingsForm: View {
                 Text("Links")
             } footer: {
                 Text("Browser sign-ins that end with these links are handed back to this game.")
+                    .sectionNote()
             }
         }
 
@@ -376,13 +389,16 @@ private struct ExecutablePickerSection: View {
         } header: {
             Text("Choose the game's executable")
         } footer: {
-            if candidates != nil {
-                HStack {
-                    Spacer()
-                    Button("Rescan") { library.scanForExecutables(gameID) }
-                        .buttonStyle(.link)
+            Group {
+                if candidates != nil {
+                    HStack {
+                        Spacer()
+                        Button("Rescan") { library.scanForExecutables(gameID) }
+                            .buttonStyle(.link)
+                    }
                 }
             }
+            .sectionNote()
         }
     }
 
@@ -425,6 +441,7 @@ private struct DLLOverridesSection: View {
             Text("DLL overrides")
         } footer: {
             Text("Passed to Wine as WINEDLLOVERRIDES. Use native for DLLs you've dropped next to the game.")
+                .sectionNote()
         }
     }
 }
@@ -462,6 +479,7 @@ private struct EnvironmentSection: View {
             Text("Environment variables")
         } footer: {
             Text("Applied last, so they override anything notwindows sets.")
+                .sectionNote()
         }
     }
 }
@@ -563,6 +581,7 @@ private struct SteamLauncherSection: View {
             }
         } footer: {
             Text("Games installed through this Steam appear in your library and the sidebar. Playing one starts Steam in the background, then runs the game with its own settings.")
+                .sectionNote()
         }
     }
 }
@@ -596,6 +615,7 @@ private struct SteamGameSection: View {
             Text("Steam")
         } footer: {
             Text("Play starts Steam in the background if needed, then launches the game directly so its own settings apply. A steam_appid.txt is added next to the executable so the game doesn't restart through the Steam client.")
+                .sectionNote()
         }
     }
 }
@@ -618,6 +638,7 @@ private struct ShaderCacheSection: View {
             Text("Shader cache")
         } footer: {
             Text("Shaders are compiled the first time a game needs them, which causes the stutter on first launch or in new areas. DXMT saves them here; macOS also keeps compiled Metal shaders for all games. Clear only if a game shows graphics glitches after an update.")
+                .sectionNote()
         }
         .task { refresh() }
     }

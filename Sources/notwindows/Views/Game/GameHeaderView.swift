@@ -49,11 +49,19 @@ struct GameHeaderView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
 
-                HStack(spacing: 8) {
-                    chip("clock", state.isRunning && game.totalPlaytime == 0 ? "First session" : Format.playtime(game.totalPlaytime))
-                    chip("calendar", state.isRunning ? "Playing now" : Format.relative(game.lastPlayedAt))
-                    chip("cpu", (engines.engine(named: game.engineName)?.displayName) ?? "No engine")
-                    chip("cube.transparent", game.settings.direct3DBackend.title)
+                let chips = [
+                    chip("clock", state.isRunning && game.totalPlaytime == 0 ? "First session" : Format.playtime(game.totalPlaytime)),
+                    chip("calendar", state.isRunning ? "Playing now" : Format.relative(game.lastPlayedAt)),
+                    chip("cpu", (engines.engine(named: game.engineName)?.displayName) ?? "No engine"),
+                    chip("cube.transparent", game.settings.direct3DBackend.title),
+                ]
+                // In narrow windows, drop chips from the end rather than truncating every one of them.
+                ViewThatFits(in: .horizontal) {
+                    ForEach((1...chips.count).reversed(), id: \.self) { count in
+                        HStack(spacing: 8) {
+                            ForEach(0..<count, id: \.self) { chips[$0] }
+                        }
+                    }
                 }
 
                 HStack(spacing: 10) {
@@ -112,10 +120,9 @@ struct GameHeaderView: View {
             .environment(\.colorScheme, .dark)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 32)
+        .formColumn()
         .padding(.top, 30)
         .padding(.bottom, 28)
-        .frame(maxWidth: .infinity)
         .background {
             ArtworkBackground(backdrop: library.backdrops[game.id], palette: palette)
                 .ignoresSafeArea()
@@ -126,6 +133,7 @@ struct GameHeaderView: View {
         Label(text, systemImage: symbol)
             .font(.caption.weight(.medium))
             .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(.white.opacity(0.9))
             .padding(.horizontal, 9)
             .padding(.vertical, 4)

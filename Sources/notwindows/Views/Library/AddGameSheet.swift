@@ -33,14 +33,20 @@ struct AddGameSheet: View {
 
             dropWell
 
-            Form {
-                TextField("Name", text: $name, prompt: Text("Game name"))
-                prefixPicker
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 12) {
+                GridRow {
+                    Text("Name:")
+                        .gridColumnAlignment(.trailing)
+                    TextField("Name", text: $name, prompt: Text("Game name"))
+                        .labelsHidden()
+                }
+                GridRow {
+                    Text("Windows prefix:")
+                    prefixPicker
+                        .labelsHidden()
+                        .fixedSize()
+                }
             }
-            .formStyle(.grouped)
-            .scrollDisabled(true)
-            .frame(height: 108)
-            .padding(.horizontal, -20)
 
             Text(explanation)
                 .font(.callout)

@@ -207,13 +207,63 @@ struct PulsingDot: View {
     }
 }
 
+// MARK: - Layout
+
+/// The column a grouped `Form` lays its sections out in: at most 704pt wide, centred, with at least 20pt either side.
+/// Content above a form uses the same column so its edges line up with the sections.
+enum FormColumn {
+    static let maxWidth: CGFloat = 704
+    static let margin: CGFloat = 20
+}
+
+extension View {
+    func formColumn(alignment: Alignment = .leading) -> some View {
+        frame(maxWidth: FormColumn.maxWidth, alignment: alignment)
+            .padding(.horizontal, FormColumn.margin)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+extension View {
+    /// Section footers start at the same edge as the section's header and row text, as in System Settings; a grouped
+    /// Form right-aligns them by default and gives them the box's full width.
+    func sectionNote() -> some View {
+        multilineTextAlignment(.leading)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+    }
+}
+
+// MARK: - Pane swaps
+
+extension AnyTransition {
+    /// Replaces a whole pane the way macOS does: the old one gets out of the way first and the new one fades in, so
+    /// two layouts are never drawn over each other.
+    static var paneSwap: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.05)),
+            removal: .opacity.animation(.easeIn(duration: 0.05))
+        )
+    }
+}
+
 // MARK: - Entrance
 
-/// Fades and lifts views in on first appearance, staggered by index.
+/// Fades and lifts views in the first time they appear, staggered by index. Coming back to a screen shows it
+/// straight away; only views new to this session animate.
 struct StaggeredAppear: ViewModifier {
     let index: Int
+    let id: AnyHashable
+    @MainActor private static var shown: Set<AnyHashable> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var visible = false
+    @State private var visible: Bool
+
+    init(index: Int, id: AnyHashable) {
+        self.index = index
+        self.id = id
+        _visible = State(initialValue: Self.shown.contains(id))
+    }
 
     func body(content: Content) -> some View {
         content
@@ -221,13 +271,15 @@ struct StaggeredAppear: ViewModifier {
             .offset(y: visible || reduceMotion ? 0 : 14)
             .scaleEffect(visible || reduceMotion ? 1 : 0.96)
             .onAppear {
+                guard !visible else { return }
+                Self.shown.insert(id)
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.82).delay(min(Double(index), 16) * 0.035)) { visible = true }
             }
     }
 }
 
 extension View {
-    func staggeredAppear(_ index: Int) -> some View { modifier(StaggeredAppear(index: index)) }
+    func staggeredAppear(_ index: Int, id: some Hashable) -> some View { modifier(StaggeredAppear(index: index, id: id)) }
 }
 
 // MARK: - Buttons
