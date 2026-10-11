@@ -8,6 +8,7 @@ private enum PrefixSelection: Hashable {
 
 struct AddGameSheet: View {
     @Environment(GameLibrary.self) private var library
+    @Environment(EngineManager.self) private var engines
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.dismiss) private var dismiss
 
@@ -19,6 +20,8 @@ struct AddGameSheet: View {
     @State private var backdrop: NSImage?
     @State private var isTargeted = false
     @State private var prefix = PrefixSelection.new
+    /// nil follows the library's default engine.
+    @State private var engineName: String?
     /// A prefix picked from disk that no library game uses yet.
     @State private var folderPrefix: URL?
 
@@ -45,6 +48,21 @@ struct AddGameSheet: View {
                     prefixPicker
                         .labelsHidden()
                         .fixedSize()
+                }
+                // A shared prefix already decides the engine.
+                if prefix == .new, engines.installed.count > 1 {
+                    GridRow {
+                        Text("Wine engine:")
+                        Picker("Wine engine", selection: $engineName) {
+                            Text("Default (\(engines.defaultEngine?.displayName ?? "none"))").tag(String?.none)
+                            Divider()
+                            ForEach(engines.installed) { engine in
+                                Text(engine.displayName).tag(Optional(engine.name))
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
                 }
             }
 
@@ -229,10 +247,10 @@ struct AddGameSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         switch mode {
         case .existing:
-            let game = library.addGame(executable: file, name: trimmed, prefix: selectedPrefix)
+            let game = library.addGame(executable: file, name: trimmed, prefix: selectedPrefix, engine: selectedPrefix == nil ? engineName : nil)
             navigation.selection = .game(game.id)
         case .installer:
-            let game = library.installGame(setup: file, name: trimmed, prefix: selectedPrefix)
+            let game = library.installGame(setup: file, name: trimmed, prefix: selectedPrefix, engine: selectedPrefix == nil ? engineName : nil)
             navigation.selection = .game(game.id)
         }
         dismiss()

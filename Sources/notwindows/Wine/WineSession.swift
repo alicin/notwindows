@@ -141,6 +141,7 @@ struct WineSession {
         // winetricks derives the 64-bit loader by renaming "wine" to "wine64" next to it.
         _ = try Self.shim(named: "wine64", target: "NOTWINDOWS_WINE")
         env["WINESERVER"] = try Self.shim(named: "wineserver", target: "NOTWINDOWS_WINESERVER").path
+        env["PATH"] = try Self.writeShim(named: "sed", script: Self.gnuSedShim).deletingLastPathComponent().path + ":" + (env["PATH"] ?? "/usr/bin:/bin")
         env["W_NO_WIN64_WARNINGS"] = "1"
         env["WINETRICKS_LATEST_VERSION_CHECK"] = "disabled"
         var flags = ["--no-isolate"]
@@ -157,14 +158,29 @@ struct WineSession {
     }
 
     private static func shim(named name: String, target variable: String) throws -> URL {
-        let directory = Paths.tools.appendingPathComponent("shims", isDirectory: true)
-        let url = directory.appendingPathComponent(name)
-        let script = """
+        try writeShim(named: name, script: """
         #!/bin/sh
         export DYLD_FALLBACK_LIBRARY_PATH="$NOTWINDOWS_DYLD_FALLBACK_LIBRARY_PATH"
         exec "$\(variable)" "$@"
 
-        """
+        """)
+    }
+
+    /// winetricks expects GNU sed: a bare -i edits in place (BSD sed takes the next argument as a backup suffix),
+    /// and verbs such as wmp9 patch binaries, which BSD sed rejects under a UTF-8 locale.
+    private static let gnuSedShim = """
+    #!/bin/sh
+    for arg do
+        shift
+        if [ "$arg" = "-i" ]; then set -- "$@" -i ""; else set -- "$@" "$arg"; fi
+    done
+    LC_ALL=C exec /usr/bin/sed "$@"
+
+    """
+
+    private static func writeShim(named name: String, script: String) throws -> URL {
+        let directory = Paths.tools.appendingPathComponent("shims", isDirectory: true)
+        let url = directory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try script.write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)

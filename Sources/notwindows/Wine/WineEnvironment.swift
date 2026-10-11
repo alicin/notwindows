@@ -21,9 +21,13 @@ enum WineEnvironment {
         env["WINEPREFIX"] = prefix.path
         env["CX_ROOT"] = engine.bundle.path
         env["PATH"] = [engine.bin.path, runtime.tools.path, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].joined(separator: ":")
-        env["WINEDLLPATH"] = ["x86_64-windows", "i386-windows", "x86_64-unix"]
-            .map { engine.wineLib.appendingPathComponent($0).path }
-            .joined(separator: ":")
+        if engine.isWin32Only {
+            env["WINEARCH"] = "win32"
+        } else {
+            env["WINEDLLPATH"] = ["x86_64-windows", "i386-windows", "x86_64-unix"]
+                .map { engine.wineLib.appendingPathComponent($0).path }
+                .joined(separator: ":")
+        }
         env["DYLD_FALLBACK_LIBRARY_PATH"] = [
             engine.lib.path,
             runtime.frameworks.path,
@@ -57,7 +61,10 @@ enum WineEnvironment {
 
         func rendererPath(_ name: String) -> String { runtime.renderer(name).appendingPathComponent("wine").path }
 
-        switch settings.direct3DBackend {
+        // The WINEDLLPATH_* renderer hooks are Sikarugir's; CrossOver's 32-bit engine always draws through WineD3D.
+        let renderers = engine.isWin32Only ? wineD3DOnly(settings) : settings
+
+        switch renderers.direct3DBackend {
         case .wined3d:
             break
         case .dxmt:
@@ -73,7 +80,7 @@ enum WineEnvironment {
             env["CX_D3DMETALPATH"] = d3dmetalExternal.path
         }
 
-        if settings.direct3DBackend == .dxvk || settings.direct3D9Backend == .d9vk {
+        if renderers.direct3DBackend == .dxvk || renderers.direct3D9Backend == .d9vk {
             env["DXVK_ASYNC"] = settings.dxvkAsync ? "1" : "0"
             if let hud = settings.dxvkHUD.envValue { env["DXVK_HUD"] = hud }
             if let cacheDirectory {
@@ -82,8 +89,8 @@ enum WineEnvironment {
                 env["DXVK_STATE_CACHE_PATH"] = cacheDirectory.appendingPathComponent("dxvk").path
             }
         }
-        if settings.direct3D9Backend == .d9vk { env["WINEDLLPATH_D9VK"] = rendererPath(d9vkRendererName(for: settings)) }
-        if settings.cncDDraw { env["WINEDLLPATH_CNCD"] = rendererPath("cnc_ddraw") }
+        if renderers.direct3D9Backend == .d9vk { env["WINEDLLPATH_D9VK"] = rendererPath(d9vkRendererName(for: settings)) }
+        if renderers.cncDDraw { env["WINEDLLPATH_CNCD"] = rendererPath("cnc_ddraw") }
 
         var overrides = extraDLLOverrides
         // winerosetta sits next to the game as a native d3d9.dll.
@@ -99,6 +106,14 @@ enum WineEnvironment {
             env[variable.key.trimmingCharacters(in: .whitespaces)] = variable.value
         }
         return env
+    }
+
+    private static func wineD3DOnly(_ settings: GameSettings) -> GameSettings {
+        var settings = settings
+        settings.direct3DBackend = .wined3d
+        settings.direct3D9Backend = .wined3d
+        settings.cncDDraw = false
+        return settings
     }
 
     /// D9VK 3.x needs Vulkan 1.3, which MoltenVK lacks; the `dxvk` folder carries D9VK 2.3 for that case.

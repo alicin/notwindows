@@ -67,6 +67,16 @@ struct Game: Codable, Identifiable, Hashable {
     var isSteamLauncher: Bool { launcherID == nil && executableURL?.lastPathComponent.lowercased() == "steam.exe" }
     var isSteamGame: Bool { launcherID != nil }
     var isPrefixInitialized: Bool { prefixURL.appendingPathComponent("system.reg").exists }
+
+    /// Whether the existing prefix is 32-bit, read from the `#arch=` line Wine writes at the top of system.reg.
+    var isPrefix32Bit: Bool? {
+        guard let handle = try? FileHandle(forReadingFrom: prefixURL.appendingPathComponent("system.reg")) else { return nil }
+        defer { try? handle.close() }
+        let head = String(decoding: (try? handle.read(upToCount: 512)) ?? Data(), as: UTF8.self)
+        if head.contains("#arch=win32") { return true }
+        if head.contains("#arch=win64") { return false }
+        return nil
+    }
     var executableURL: URL? { executablePath.isEmpty ? nil : URL(fileURLWithPath: executablePath) }
 
     var resolvedWorkingDirectory: URL? {

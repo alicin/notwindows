@@ -238,3 +238,44 @@ struct RosettaX87SessionTests {
         #expect(session.environment["ROSETTA_X87_PATH"] == "/T/runtime_loader")
     }
 }
+
+struct Win32EngineTests {
+    private func engine(win32: Bool) throws -> Engine {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("engine-\(UUID().uuidString)", isDirectory: true)
+        let bundle = dir.appendingPathComponent("wswine.bundle", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundle.appendingPathComponent(win32 ? "lib32on64" : "lib/wine"), withIntermediateDirectories: true)
+        return Engine(name: win32 ? "WS11WineCX32Bit21.2.0" : "WS12WineSikarugir11.0_1", directory: dir)
+    }
+
+    @Test func namesThe32BitEngines() {
+        #expect(Engine.displayName(for: "WS11WineCX32Bit21.2.0") == "CrossOver 21.2.0 (32-bit)")
+        #expect(Engine.displayName(for: "WS11WineCX21.2.0") == "CrossOver 21.2.0")
+    }
+
+    @Test func thirtyTwoBitEnginesGetWin32PrefixesAndWineD3D() throws {
+        let runtime = Runtime(name: "T", directory: FileManager.default.temporaryDirectory.appendingPathComponent("runtime"))
+        var settings = GameSettings()
+        settings.direct3D9Backend = .d9vk
+        let prefix = URL(fileURLWithPath: "/tmp/prefix")
+
+        let cx = try engine(win32: true)
+        let cxEnv = WineEnvironment.make(engine: cx, runtime: runtime, prefix: prefix, settings: settings, base: [:])
+        #expect(cxEnv["WINEARCH"] == "win32")
+        #expect(cxEnv["DYLD_FALLBACK_LIBRARY_PATH"]?.hasPrefix(cx.bundle.appendingPathComponent("lib32on64").path) == true)
+        #expect(cxEnv.keys.contains { $0.hasPrefix("WINEDLLPATH") } == false)
+
+        let wow64Env = WineEnvironment.make(engine: try engine(win32: false), runtime: runtime, prefix: prefix, settings: settings, base: [:])
+        #expect(wow64Env["WINEARCH"] == nil)
+        #expect(wow64Env["WINEDLLPATH_D9VK"] != nil)
+    }
+
+    @Test func readsThePrefixArchitecture() throws {
+        var game = Game(name: "Arch")
+        let prefix = FileManager.default.temporaryDirectory.appendingPathComponent("arch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        game.externalPrefixPath = prefix.path
+        #expect(game.isPrefix32Bit == nil)
+        try "WINE REGISTRY Version 2\n;; All keys relative to \\\\Machine\n\n#arch=win32\n".write(to: prefix.appendingPathComponent("system.reg"), atomically: true, encoding: .utf8)
+        #expect(game.isPrefix32Bit == true)
+    }
+}

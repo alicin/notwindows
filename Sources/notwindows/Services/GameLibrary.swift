@@ -174,8 +174,9 @@ final class GameLibrary {
     // MARK: Adding games
 
     @discardableResult
-    func addGame(executable: URL, name: String? = nil, prefix: URL? = nil) -> Game {
+    func addGame(executable: URL, name: String? = nil, prefix: URL? = nil, engine: String? = nil) -> Game {
         var game = Game(name: name ?? Self.suggestedName(for: executable), executablePath: executable.path)
+        game.engineName = engine
         if let prefix { shareGame(&game, prefix: prefix) }
         if WineRosetta.isLegacyWoW(executable) {
             game.settings.wineRosetta = true
@@ -193,8 +194,9 @@ final class GameLibrary {
     }
 
     @discardableResult
-    func installGame(setup: URL, name: String, prefix: URL? = nil) -> Game {
+    func installGame(setup: URL, name: String, prefix: URL? = nil, engine: String? = nil) -> Game {
         var created = Game(name: name)
+        created.engineName = engine
         if let prefix { shareGame(&created, prefix: prefix) }
         let game = created
         save(game)
@@ -370,6 +372,16 @@ final class GameLibrary {
     @discardableResult
     func prepare(_ id: UUID) async -> Bool {
         guard let session = session(for: id) else { return false }
+        if let is32Bit = session.game.isPrefix32Bit, is32Bit != session.engine.isWin32Only {
+            let engine = session.engine.displayName
+            alert = AppAlert(
+                title: "\(session.game.name)'s prefix doesn't fit its engine",
+                message: is32Bit
+                    ? "The prefix is 32-bit, which \(engine) can't run. Pick a 32-bit engine, or reset the prefix in Advanced settings."
+                    : "\(engine) only runs 32-bit programs, but the prefix is 64-bit. Reset the prefix in Advanced settings to make a 32-bit one, or pick another engine."
+            )
+            return false
+        }
         let previous = state(of: id)
         defer { states[id] = previous }
 

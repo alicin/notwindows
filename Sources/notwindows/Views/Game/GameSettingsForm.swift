@@ -9,6 +9,7 @@ struct GameSettingsForm: View {
     let tab: GameTab
 
     private var game: Game { library.game(gameID) ?? Game(name: "") }
+    private var engine: Engine? { engines.engine(named: library.launcher(of: game)?.engineName ?? game.engineName) }
     private func setting<V>(_ keyPath: WritableKeyPath<GameSettings, V>) -> Binding<V> { library.setting(gameID, keyPath) }
 
     var body: some View {
@@ -83,11 +84,26 @@ struct GameSettingsForm: View {
             Picker("Windows version", selection: setting(\.windowsVersion)) {
                 ForEach(WindowsVersion.allCases) { Text($0.title).tag($0) }
             }
+            if let engine, let is32Bit = game.isPrefix32Bit, is32Bit != engine.isWin32Only {
+                HStack {
+                    Label(is32Bit ? "This prefix is 32-bit, which \(engine.displayName) can't run."
+                                  : "\(engine.displayName) needs a 32-bit prefix; this one is 64-bit.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    if game.externalPrefixPath == nil {
+                        Button("Reset Prefix…") { confirmReset() }
+                            .disabled(library.state(of: gameID).isBusy)
+                    }
+                }
+            }
         } header: {
             Text("Compatibility")
         } footer: {
             Group {
-                if game.isSteamGame {
+                if let engine, engine.isWin32Only {
+                    Text("\(engine.displayName) runs only 32-bit Windows programs, in a 32-bit prefix, and draws all Direct3D through WineD3D (OpenGL). It suits older 32-bit games.")
+                } else if game.isSteamGame {
                     Text("Steam games run next to the Steam client, so they use its engine. Windows version and other registry settings apply to this game only.")
                 } else if game.externalPrefixPath != nil, !library.prefixMates(of: game).isEmpty {
                     Text("While another game in this prefix is running, this one uses that game's engine. Windows version and other registry settings apply to this game only.")
@@ -131,6 +147,13 @@ struct GameSettingsForm: View {
 
     @ViewBuilder
     private var graphics: some View {
+        if let engine, engine.isWin32Only {
+            Section {
+                Label("\(engine.displayName) draws every Direct3D version through WineD3D (OpenGL), so the renderer choices below don't apply to it.",
+                      systemImage: "info.circle")
+                    .foregroundStyle(.secondary)
+            }
+        }
         Section {
             Picker("Direct3D 10 / 11 / 12", selection: setting(\.direct3DBackend)) {
                 ForEach(Direct3DBackend.allCases) { backend in

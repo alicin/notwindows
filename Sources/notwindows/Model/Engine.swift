@@ -8,7 +8,9 @@ struct Engine: Identifiable, Hashable {
     var id: String { name }
     var bundle: URL { directory.appendingPathComponent("wswine.bundle", isDirectory: true) }
     var bin: URL { bundle.appendingPathComponent("bin", isDirectory: true) }
-    var lib: URL { bundle.appendingPathComponent("lib", isDirectory: true) }
+    /// CrossOver's wine32on64 builds run only 32-bit Windows programs, so their prefixes must be 32-bit too.
+    var isWin32Only: Bool { bundle.appendingPathComponent("lib32on64").exists }
+    var lib: URL { bundle.appendingPathComponent(isWin32Only ? "lib32on64" : "lib", isDirectory: true) }
     var wineLib: URL { lib.appendingPathComponent("wine", isDirectory: true) }
     /// Prefers the real loader: Sikarugir's bin/wine is a thin launcher that misbehaves outside a wrapper.
     /// Older (pre-WoW64) builds only ship bin/wine64 or bin/wine.
@@ -32,10 +34,12 @@ struct Engine: Identifiable, Hashable {
 
     var displayName: String { Engine.displayName(for: name) }
 
-    /// "WS12WineSikarugir11.0_1" -> "Sikarugir 11.0 (rev 1)"
+    /// "WS12WineSikarugir11.0_1" -> "Sikarugir 11.0 (rev 1)", "WS11WineCX32Bit21.2.0" -> "CrossOver 21.2.0 (32-bit)"
     static func displayName(for name: String) -> String {
         var s = name
         if let range = s.range(of: #"^WS\d+"#, options: .regularExpression) { s.removeSubrange(range) }
+        let is32Bit = s.contains("32Bit")
+        s = s.replacingOccurrences(of: "32Bit", with: "")
         if s.hasPrefix("Wine") { s.removeFirst(4) }
         s = s.replacingOccurrences(of: "WhiskyWine", with: "Whisky")
         var revision: String?
@@ -50,6 +54,7 @@ struct Engine: Identifiable, Hashable {
             .replacingOccurrences(of: "  ", with: " ")
             .trimmingCharacters(in: .whitespaces)
         if let revision { s += " (rev \(revision))" }
+        if is32Bit { s += " (32-bit)" }
         return s
     }
 }
