@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG || DEBUG_HOOKS
 import AppKit
 
 /// Debug-only remote control for UI review: post the distributed notification

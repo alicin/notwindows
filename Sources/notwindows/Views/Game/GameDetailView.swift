@@ -38,11 +38,10 @@ struct GameDetailView: View {
 
                 Divider()
 
-                ZStack {
-                    GameSettingsForm(gameID: gameID, tab: tab)
-                        .id(tab)
-                        .transition(.paneSwap)
-                }
+                // Pages swap instantly, like a native tab view. Any fade leaves a moment with no page drawn, and the
+                // translucent backdrop behind the form shows through tinted by the header.
+                GameSettingsForm(gameID: gameID, tab: tab)
+                    .id(tab)
             }
             .navigationTitle(game.name)
             .sheet(isPresented: $showingWinetricks) { WinetricksSheet(gameID: gameID) }
@@ -51,7 +50,7 @@ struct GameDetailView: View {
                                         set: { if !$0 { library.compatSheetGameID = nil } })) {
                 CompatSheet(gameID: gameID)
             }
-            #if DEBUG
+            #if DEBUG || DEBUG_HOOKS
             .onAppear {
                 DebugSnapshots.tabHandler = { name in
                     if name == "winetricks" { showingWinetricks = true }

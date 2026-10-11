@@ -14,8 +14,12 @@ MIN_MACOS=14.0 # keep in step with Package.swift
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
 LINK_FLAGS=(-Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS" -Xlinker "$SDK_VERSION")
 
-swift build -c "$CONFIG" "${LINK_FLAGS[@]}"
-BIN="$(swift build -c "$CONFIG" "${LINK_FLAGS[@]}" --show-bin-path)/notwindows"
+# NOTWINDOWS_DEBUG_HOOKS=1 compiles the DebugSnapshots remote control into a release build, for checking it as shipped.
+SWIFT_FLAGS=()
+[ -n "${NOTWINDOWS_DEBUG_HOOKS:-}" ] && SWIFT_FLAGS=(-Xswiftc -DDEBUG_HOOKS)
+
+swift build -c "$CONFIG" "${LINK_FLAGS[@]}" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
+BIN="$(swift build -c "$CONFIG" "${LINK_FLAGS[@]}" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} --show-bin-path)/notwindows"
 
 if [ ! -f Resources/AppIcon.icns ]; then
   swift scripts/make-icon.swift Resources/AppIcon.icns

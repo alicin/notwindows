@@ -65,7 +65,7 @@ struct SidebarView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: library.runningCount)
-        #if DEBUG
+        #if DEBUG || DEBUG_HOOKS
         .onAppear { DebugSnapshots.openSettings = { openSettings() } }
         #endif
     }

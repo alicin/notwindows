@@ -68,7 +68,7 @@ struct WinetricksSheet: View {
         .frame(width: 960, height: 680)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: job?.status)
         .task { await load() }
-        #if DEBUG
+        #if DEBUG || DEBUG_HOOKS
         .onAppear {
             DebugSnapshots.winetricksHandler = { command in
                 if command == "clear" { library.clearWinetricksJob(gameID) }

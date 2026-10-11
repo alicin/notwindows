@@ -95,7 +95,7 @@ struct NotWindowsApp: App {
                 .onAppear {
                     appDelegate.openFiles = { urls in navigation.open(urls, into: library) }
                     appDelegate.flush()
-                    #if DEBUG
+                    #if DEBUG || DEBUG_HOOKS
                     DebugSnapshots.install(library: library, navigation: navigation)
                     #endif
                 }

@@ -235,19 +235,6 @@ extension View {
     }
 }
 
-// MARK: - Pane swaps
-
-extension AnyTransition {
-    /// Replaces a whole pane the way macOS does: the old one gets out of the way first and the new one fades in, so
-    /// two layouts are never drawn over each other.
-    static var paneSwap: AnyTransition {
-        .asymmetric(
-            insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.05)),
-            removal: .opacity.animation(.easeIn(duration: 0.05))
-        )
-    }
-}
-
 // MARK: - Entrance
 
 /// Fades and lifts views in the first time they appear, staggered by index. Coming back to a screen shows it
