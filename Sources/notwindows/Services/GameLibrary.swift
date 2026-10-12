@@ -439,7 +439,8 @@ final class GameLibrary {
             states[id] = .idle
             return false
         }
-        if session.game.settings.rosettaX87 {
+        // CrossOver's wine32on64 ntdll has no ROSETTA_X87_PATH hook, so rosettax87 can't attach to it.
+        if session.game.settings.rosettaX87 && !session.engine.isWin32Only {
             do {
                 try RosettaX87.prepare(session.engine)
                 session.x87Loader = try RosettaX87.install()

@@ -7,18 +7,23 @@ struct GameHeaderView: View {
     @Environment(AppNavigation.self) private var navigation
 
     let game: Game
+    let report: ExecutableReport?
+    /// How far the artwork reaches up under the toolbar.
+    var topBleed: CGFloat = 0
     let showWinetricks: () -> Void
     let showLog: () -> Void
     let showCompat: () -> Void
 
     @State private var isDropTargeted = false
+    @State private var mosaic: PixelGrid?
+    @State private var revealStart: Date?
 
     var body: some View {
         let state = library.state(of: game.id)
         let icon = library.icons[game.id]
         let palette = library.palettes[game.id]
 
-        HStack(alignment: .center, spacing: 26) {
+        HStack(alignment: .center, spacing: 28) {
             GameIconView(icon: icon, size: 112)
                 .padding(12)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -41,28 +46,25 @@ struct GameHeaderView: View {
                 }
                 .help("Drop an image here to change the icon")
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(game.name)
-                    .font(.system(size: 32, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+            VStack(alignment: .leading, spacing: 12) {
+                tags(state)
 
-                let chips = [
-                    chip("clock", state.isRunning && game.totalPlaytime == 0 ? "First session" : Format.playtime(game.totalPlaytime)),
-                    chip("calendar", state.isRunning ? "Playing now" : Format.relative(game.lastPlayedAt)),
-                    chip("cpu", (engines.engine(named: game.engineName)?.displayName) ?? "No engine"),
-                    chip("cube.transparent", game.settings.direct3DBackend.title),
-                ]
-                // In narrow windows, drop chips from the end rather than truncating every one of them.
-                ViewThatFits(in: .horizontal) {
-                    ForEach((1...chips.count).reversed(), id: \.self) { count in
-                        HStack(spacing: 8) {
-                            ForEach(0..<count, id: \.self) { chips[$0] }
-                        }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(game.name)
+                        .font(.system(size: 34, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    if let company = report?.companyName?.trimmingCharacters(in: .whitespaces), !company.isEmpty, company != game.name {
+                        Text(company)
+                            .font(.title3.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
                     }
                 }
+
+                stats(state)
 
                 HStack(spacing: 10) {
                     PlayControl(game: game, tint: .white, foreground: .black.opacity(0.85))
@@ -115,30 +117,155 @@ struct GameHeaderView: View {
                     .symbolEffect(.bounce, value: game.isFavorite)
                     .help(game.isFavorite ? "Remove from Favorites" : "Add to Favorites")
                 }
-                .padding(.top, 6)
+                .padding(.top, 2)
             }
             .environment(\.colorScheme, .dark)
             Spacer(minLength: 0)
         }
         .formColumn()
-        .padding(.top, 30)
-        .padding(.bottom, 28)
+        .padding(.top, 34)
+        .padding(.bottom, 44)
+        .task(id: icon.map(ObjectIdentifier.init)) {
+            mosaic = icon?.pixelGrid(side: 22)
+            revealStart = Date()
+        }
         .background {
-            ArtworkBackground(backdrop: library.backdrops[game.id], palette: palette)
-                .ignoresSafeArea()
+            ZStack {
+                ArtworkBackground(backdrop: library.backdrops[game.id], palette: palette)
+                if let mosaic {
+                    GeometryReader { proxy in
+                        PixelMosaic(grid: mosaic, revealStart: revealStart)
+                            .frame(width: proxy.size.height * 1.1, height: proxy.size.height * 1.1)
+                            .rotationEffect(.degrees(-8))
+                            .shadow(color: (palette?.glow ?? .white).opacity(0.5), radius: 14)
+                            .mask {
+                                LinearGradient(colors: [.clear, .black.opacity(0.9)], startPoint: .leading, endPoint: .trailing)
+                            }
+                            .opacity(0.42)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                            .offset(x: proxy.size.height * 0.12)
+                    }
+                    .clipped()
+                }
+            }
+            // Fade the artwork into the page so the tabs below sit on the same surface as the settings.
+            .mask {
+                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.84), .init(color: .clear, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            // ignoresSafeArea inside a scroll view stretches the backdrop over the whole viewport, so reach up by hand.
+            .padding(.top, -topBleed)
         }
     }
 
-    private func chip(_ symbol: String, _ text: String) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.caption.weight(.medium))
-            .lineLimit(1)
-            .fixedSize()
-            .foregroundStyle(.white.opacity(0.9))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(.white.opacity(0.14), in: Capsule())
-            .contentTransition(.numericText())
+    // MARK: Tags
+
+    private struct HeaderTag: Identifiable {
+        let text: String
+        var symbol: String?
+        var tint: Color = .white
+        var id: String { text }
+    }
+
+    private func tagItems(_ state: RunState) -> [HeaderTag] {
+        var items: [HeaderTag] = []
+        if game.executablePath.isEmpty {
+            items.append(HeaderTag(text: "No executable", symbol: "exclamationmark.triangle.fill", tint: .orange))
+        }
+        if let report {
+            items.append(HeaderTag(text: report.is64Bit ? "64-bit" : "32-bit", symbol: "cpu"))
+            if let api = report.graphicsAPI { items.append(HeaderTag(text: api.title, symbol: "cube")) }
+            if let engine = report.engine { items.append(HeaderTag(text: engine.rawValue, symbol: "hammer.fill")) }
+            if report.isDotNet { items.append(HeaderTag(text: ".NET")) }
+        }
+        if game.isSteamGame || game.isSteamLauncher {
+            items.append(HeaderTag(text: "Steam", symbol: "cloud.fill"))
+        }
+        for name in report?.antiCheat ?? [] {
+            items.append(HeaderTag(text: name, symbol: "exclamationmark.shield.fill", tint: .orange))
+        }
+        return items
+    }
+
+    @ViewBuilder
+    private func tags(_ state: RunState) -> some View {
+        let items = tagItems(state)
+        if !items.isEmpty {
+            // In narrow windows, drop tags from the end rather than truncating every one of them.
+            ViewThatFits(in: .horizontal) {
+                ForEach((1...items.count).reversed(), id: \.self) { count in
+                    HStack(spacing: 6) {
+                        ForEach(items.prefix(count)) { tag($0) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func tag(_ item: HeaderTag) -> some View {
+        HStack(spacing: 4) {
+            if let symbol = item.symbol { Image(systemName: symbol) }
+            Text(item.text.uppercased())
+        }
+        .font(.system(size: 10, weight: .heavy, design: .monospaced))
+        .tracking(0.5)
+        .lineLimit(1)
+        .fixedSize()
+        .foregroundStyle(item.tint == .white ? Color.white.opacity(0.9) : item.tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(item.tint == .white ? Color.white.opacity(0.14) : item.tint.opacity(0.22),
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+    }
+
+    // MARK: Stats
+
+    private func stats(_ state: RunState) -> some View {
+        let engine = engines.engine(named: library.launcher(of: game)?.engineName ?? game.engineName)
+        let neverPlayed = game.totalPlaytime == 0 && !state.isRunning
+        let items: [(label: String, value: String)] = [
+            ("PLAYED", neverPlayed ? "—" : state.isRunning && game.totalPlaytime == 0 ? "First run" : Format.playtime(game.totalPlaytime)),
+            ("LAST PLAYED", state.isRunning ? "Now" : game.lastPlayedAt == nil ? "Never" : Format.relative(game.lastPlayedAt, style: .short)),
+            ("ENGINE", engine?.displayName ?? "None"),
+            ("RENDERER", renderer(engine)),
+        ]
+        // Like the tags, drop readouts from the end when the window is too narrow for all of them.
+        return ViewThatFits(in: .horizontal) {
+            ForEach((1...items.count).reversed(), id: \.self) { count in
+                HStack(spacing: 0) {
+                    ForEach(0..<count, id: \.self) { index in
+                        if index > 0 {
+                            Rectangle().fill(.white.opacity(0.22)).frame(width: 1, height: 28).padding(.horizontal, 16)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(items[index].value)
+                                .font(.system(size: 17, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(.white)
+                                .contentTransition(.numericText())
+                            Text(items[index].label)
+                                .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                                .tracking(1)
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                        .lineLimit(1)
+                        .fixedSize()
+                    }
+                }
+            }
+        }
+    }
+
+    /// The renderer this game's own graphics API ends up on.
+    private func renderer(_ engine: Engine?) -> String {
+        let settings = engine.map { WineEnvironment.renderers(for: game.settings, engine: $0) } ?? game.settings
+        switch report?.graphicsAPI {
+        case .d3d9, .d3d8: return settings.direct3D9Backend == .d9vk ? "D9VK" : "WineD3D"
+        case .directDraw: return settings.cncDDraw ? "cnc-ddraw" : "WineD3D"
+        case .openGL: return "OpenGL"
+        case .vulkan: return settings.vulkanDriver.shortTitle
+        default: return settings.direct3DBackend.shortTitle
+        }
     }
 
     private func chooseIcon() {

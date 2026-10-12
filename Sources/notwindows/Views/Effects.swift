@@ -15,6 +15,11 @@ struct IconPalette: Equatable {
         glow: Color(red: 0.85, green: 0.35, blue: 0.6)
     )
 
+    /// The primary colour when it's vivid enough to tint controls; grey icons leave it to the system accent.
+    var accent: Color? {
+        guard let color = NSColor(primary).usingColorSpace(.sRGB), color.saturationComponent > 0.22 else { return nil }
+        return primary
+    }
 }
 
 extension NSImage {
@@ -257,6 +262,95 @@ struct PixelInvader: View {
             .frame(width: 13 * pixel, alignment: .leading)
         }
         .shadow(color: color.opacity(0.7), radius: pixel * 2)
+    }
+}
+
+/// A game's icon redrawn as a grid of LED-like pixels, like an arcade marquee. Given a start time, the pixels flicker
+/// through random colours and land on their own one by one.
+struct PixelMosaic: View {
+    let grid: PixelGrid
+    var revealStart: Date?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var settled = false
+
+    static let revealDuration: TimeInterval = 1.4
+
+    var body: some View {
+        let animating = revealStart != nil && !reduceMotion && !settled
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animating)) { timeline in
+            let elapsed = animating ? timeline.date.timeIntervalSince(revealStart ?? timeline.date) : .infinity
+            Canvas { context, size in
+                let cell = min(size.width, size.height) / CGFloat(grid.side)
+                let inset = max(1, (cell * 0.16).rounded()) / 2
+                let origin = CGPoint(x: size.width - cell * CGFloat(grid.side), y: size.height - cell * CGFloat(grid.side))
+                for (index, color) in grid.colors.enumerated() {
+                    guard let color else { continue }
+                    var rect = CGRect(x: origin.x + CGFloat(index % grid.side) * cell, y: origin.y + CGFloat(index / grid.side) * cell,
+                                      width: cell, height: cell)
+                    let landsAt = 0.35 + (Self.revealDuration - 0.35) * Self.noise(index, 0)
+                    let fill: Color
+                    if elapsed >= landsAt {
+                        // A quick pop as the pixel locks onto its colour.
+                        let since = elapsed - landsAt
+                        if since < 0.16 { rect = rect.insetBy(dx: -cell * 0.2 * (1 - since / 0.16), dy: -cell * 0.2 * (1 - since / 0.16)) }
+                        fill = color
+                    } else {
+                        let fade = min(max((elapsed - 0.3 * Self.noise(index, 1)) / 0.2, 0), 1)
+                        guard fade > 0 else { continue }
+                        let hue = Self.noise(index, Int(elapsed / 0.06) + 2)
+                        fill = Color(hue: hue, saturation: 0.7, brightness: 1).opacity(0.85 * fade)
+                    }
+                    rect = rect.insetBy(dx: inset, dy: inset)
+                    context.fill(Path(roundedRect: rect, cornerRadius: rect.width * 0.22, style: .continuous), with: .color(fill))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .task(id: revealStart) {
+            settled = false
+            guard revealStart != nil else { return }
+            try? await Task.sleep(for: .seconds(Self.revealDuration + 0.25))
+            settled = true
+        }
+    }
+
+    /// A stable pseudo-random number in 0..<1 for a pixel and a step.
+    private static func noise(_ index: Int, _ step: Int) -> Double {
+        var x = (UInt64(truncatingIfNeeded: index) &* 0x9E37_79B9_7F4A_7C15) ^ (UInt64(truncatingIfNeeded: step) &* 0xC2B2_AE3D_27D4_EB4F)
+        x ^= x >> 31
+        x &*= 0xBF58_476D_1CE4_E5B9
+        x ^= x >> 29
+        return Double(x % 1_000_000) / 1_000_000
+    }
+}
+
+struct PixelGrid: Equatable {
+    let side: Int
+    /// Row by row from the top; nil where the icon is transparent.
+    let colors: [Color?]
+}
+
+extension NSImage {
+    /// The icon averaged down to `side`×`side` pixels.
+    func pixelGrid(side: Int) -> PixelGrid? {
+        guard let cg = cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            context.interpolationQuality = .medium
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
+            return true
+        }
+        guard drawn else { return nil }
+        let colors = (0..<side * side).map { index -> Color? in
+            let alpha = Double(pixels[index * 4 + 3]) / 255
+            guard alpha > 0.35 else { return nil }
+            func channel(_ offset: Int) -> Double { min(Double(pixels[index * 4 + offset]) / 255 / alpha, 1) }
+            return Color(.sRGB, red: channel(0), green: channel(1), blue: channel(2))
+        }
+        return PixelGrid(side: side, colors: colors)
     }
 }
 

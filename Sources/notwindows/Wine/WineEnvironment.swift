@@ -62,8 +62,7 @@ enum WineEnvironment {
 
         func rendererPath(_ name: String) -> String { runtime.renderer(name).appendingPathComponent("wine").path }
 
-        // The WINEDLLPATH_* renderer hooks are Sikarugir's; CrossOver's 32-bit engine always draws through WineD3D.
-        let renderers = engine.isWin32Only ? wineD3DOnly(settings) : settings
+        let renderers = renderers(for: settings, engine: engine)
 
         switch renderers.direct3DBackend {
         case .wined3d:
@@ -109,7 +108,10 @@ enum WineEnvironment {
         return env
     }
 
-    private static func wineD3DOnly(_ settings: GameSettings) -> GameSettings {
+    /// The renderer settings that take effect with `engine`. The WINEDLLPATH_* renderer hooks are Sikarugir's;
+    /// CrossOver's 32-bit engine always draws through WineD3D.
+    static func renderers(for settings: GameSettings, engine: Engine) -> GameSettings {
+        guard engine.isWin32Only else { return settings }
         var settings = settings
         settings.direct3DBackend = .wined3d
         settings.direct3D9Backend = .wined3d

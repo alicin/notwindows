@@ -38,11 +38,11 @@ enum Format {
         return formatter.string(from: seconds) ?? ""
     }
 
-    static func relative(_ date: Date?) -> String {
+    static func relative(_ date: Date?, style: RelativeDateTimeFormatter.UnitsStyle = .full) -> String {
         guard let date else { return "Never played" }
         if abs(date.timeIntervalSinceNow) < 60 { return "Just now" }
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
+        formatter.unitsStyle = style
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
