@@ -148,7 +148,7 @@ struct GameDetailView: View {
         } else if game.executablePath.isEmpty || archMismatch {
             badges[.general] = .warning
         }
-        if let report, engine?.isWin32Only != true {
+        if let report, engine?.capabilities.rendererHooks != false {
             let backend = game.settings.direct3DBackend
             if (backend == .d3dmetal && !report.is64Bit) || (report.graphicsAPI == .d3d12 && backend != .d3dmetal) {
                 badges[.graphics] = .warning

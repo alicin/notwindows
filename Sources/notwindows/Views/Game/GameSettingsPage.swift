@@ -21,8 +21,8 @@ struct GameSettingsPage: View {
     private var launcher: Game? { library.launcher(of: game) }
     private var engine: Engine? { engines.engine(named: launcher?.engineName ?? game.engineName) }
     private var isWin32Engine: Bool { engine?.isWin32Only == true }
-    private var lacksRendererHooks: Bool { isWin32Engine }
-    private var lacksRosettaX87: Bool { isWin32Engine }
+    private var lacksRendererHooks: Bool { engine?.capabilities.rendererHooks == false }
+    private var lacksRosettaX87: Bool { engine?.capabilities.rosettaX87 == false }
     /// What actually takes effect at launch, which can differ from what's stored (e.g. under CrossOver's 32-bit engine).
     private var effective: GameSettings { engine.map { WineEnvironment.renderers(for: game.settings, engine: $0) } ?? game.settings }
     private func setting<V>(_ keyPath: WritableKeyPath<GameSettings, V>) -> Binding<V> { library.setting(gameID, keyPath) }

@@ -8,6 +8,7 @@ struct EngineCatalogItem: Identifiable, Hashable {
     let isRecommended: Bool
     var id: String { name }
     var displayName: String { Engine.displayName(for: name) }
+    var family: EngineFamily { EngineFamily(engineName: name) }
 }
 
 @MainActor
@@ -25,6 +26,8 @@ final class EngineManager {
     }
 
     private static let repository = "Sikarugir-App/Engines"
+    /// Gcenx's builds of upstream Wine (devel, staging and stable) for macOS.
+    private static let wineBuildsRepository = "Gcenx/macOS_Wine_builds"
 
     init() {
         defaultEngineName = UserDefaults.standard.string(forKey: "defaultEngine")
@@ -57,30 +60,50 @@ final class EngineManager {
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedDescending }
     }
 
+    private struct Release: Decodable { let assets: [Asset] }
+    private struct Asset: Decodable { let name: String; let size: Int64; let browser_download_url: URL }
+
     func refreshCatalog() async {
         isRefreshingCatalog = true
         defer { isRefreshingCatalog = false }
-        do {
-            struct Release: Decodable { let assets: [Asset] }
-            struct Asset: Decodable { let name: String; let size: Int64; let browser_download_url: URL }
+        async let sikarugir = Result { try await Self.sikarugirCatalog() }
+        async let wineBuilds = Result { try await Self.wineBuildsCatalog() }
+        let results = await [sikarugir, wineBuilds]
 
-            let releases = try await Downloader.json([Release].self, from: URL(string: "https://api.github.com/repos/\(Self.repository)/releases?per_page=20")!)
-            let recommendedText = (try? await Downloader.string(URL(string: "https://raw.githubusercontent.com/\(Self.repository)/HEAD/EngineList.txt")!)) ?? ""
-            let recommended = Set(recommendedText.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) })
-
-            var seen = Set<String>()
-            catalog = releases.flatMap(\.assets)
-                .filter { $0.name.hasSuffix(".tar.xz") }
-                .compactMap { asset in
-                    let name = String(asset.name.dropLast(".tar.xz".count))
-                    guard seen.insert(name).inserted else { return nil }
-                    return EngineCatalogItem(name: name, url: asset.browser_download_url, size: asset.size, isRecommended: recommended.contains(name))
-                }
-                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedDescending }
-            catalogError = nil
-        } catch {
-            catalogError = error.localizedDescription
+        var seen = Set<String>()
+        catalog = results.flatMap { (try? $0.get()) ?? [] }
+            .filter { seen.insert($0.name).inserted }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedDescending }
+        let failures = results.compactMap { result -> String? in
+            if case .failure(let error) = result { error.localizedDescription } else { nil }
         }
+        catalogError = failures.count == results.count ? failures.first : nil
+    }
+
+    /// Every engine Sikarugir publishes, with the ones its EngineList.txt points at marked as recommended.
+    private static func sikarugirCatalog() async throws -> [EngineCatalogItem] {
+        var releases: [Release] = []
+        for page in 1...5 {
+            let batch = try await Downloader.json([Release].self, from: URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=100&page=\(page)")!)
+            releases += batch
+            if batch.count < 100 { break }
+        }
+        let recommendedText = (try? await Downloader.string(URL(string: "https://raw.githubusercontent.com/\(repository)/HEAD/EngineList.txt")!)) ?? ""
+        let recommended = Set(recommendedText.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) })
+        return releases.flatMap(\.assets)
+            .filter { $0.name.hasSuffix(".tar.xz") }
+            .map { asset in
+                let name = String(asset.name.dropLast(".tar.xz".count))
+                return EngineCatalogItem(name: name, url: asset.browser_download_url, size: asset.size, isRecommended: recommended.contains(name))
+            }
+    }
+
+    /// Upstream Wine from Gcenx's macOS builds, named like "wine-staging-11.18".
+    private static func wineBuildsCatalog() async throws -> [EngineCatalogItem] {
+        let releases = try await Downloader.json([Release].self, from: URL(string: "https://api.github.com/repos/\(wineBuildsRepository)/releases?per_page=30")!)
+        return releases.flatMap(\.assets)
+            .filter { $0.name.hasPrefix("wine-") && $0.name.hasSuffix("-osx64.tar.xz") }
+            .map { EngineCatalogItem(name: String($0.name.dropLast("-osx64.tar.xz".count)), url: $0.browser_download_url, size: $0.size, isRecommended: false) }
     }
 
     /// Newest recommended engine from the catalog — what onboarding installs.
@@ -115,10 +138,12 @@ final class EngineManager {
         defer { try? FileManager.default.removeItem(at: staging) }
         try await Downloader.extract(archive, into: staging)
 
-        guard let bundle = FileManager.default.enumerator(at: staging, includingPropertiesForKeys: nil)?
-            .compactMap({ $0 as? URL })
-            .first(where: { $0.lastPathComponent == "wswine.bundle" }) else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: "\(archive.lastPathComponent) doesn't contain a wswine.bundle."])
+        // Sikarugir engines ship a wswine.bundle; Gcenx's upstream builds a "Wine ….app" whose Contents/Resources/wine
+        // has the same bin/lib layout, so it's installed as the bundle.
+        let files = FileManager.default.enumerator(at: staging, includingPropertiesForKeys: nil)?.compactMap { $0 as? URL } ?? []
+        guard let bundle = files.first(where: { $0.lastPathComponent == "wswine.bundle" })
+                ?? files.first(where: { $0.path.hasSuffix(".app/Contents/Resources/wine") && $0.appendingPathComponent("bin").isDirectoryURL }) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: "\(archive.lastPathComponent) doesn't contain a Wine engine."])
         }
         let destination = Paths.engines.appendingPathComponent(name, isDirectory: true)
         try? FileManager.default.removeItem(at: destination)
@@ -133,6 +158,7 @@ final class EngineManager {
             name = String(name.dropLast(suffix.count))
             break
         }
+        if name.hasPrefix("wine-"), name.hasSuffix("-osx64") { name = String(name.dropLast("-osx64".count)) }
         return name
     }
 }

@@ -56,3 +56,32 @@ struct PrefixTests {
         #expect(FileManager.default.fileExists(atPath: moved.executablePath))
     }
 }
+
+@Suite(.serialized)
+@MainActor
+struct EngineInstallTests {
+    @Test func installsUpstreamWineBuilds() async throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("notwindows-tests-\(UUID().uuidString)", isDirectory: true)
+        setenv("NOTWINDOWS_HOME", home.path, 1)
+        let source = home.appendingPathComponent("source", isDirectory: true)
+        let wine = source.appendingPathComponent("Wine Staging.app/Contents/Resources/wine", isDirectory: true)
+        for file in ["bin/wine", "bin/wineserver", "lib/wine/x86_64-unix/wine", "lib/wine/x86_64-unix/ntdll.so"] {
+            let url = wine.appendingPathComponent(file)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("plain wine".utf8).write(to: url)
+        }
+        let archive = home.appendingPathComponent("wine-staging-11.18-osx64.tar.xz")
+        let tar = Process()
+        tar.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        tar.arguments = ["-cJf", archive.path, "-C", source.path, "Wine Staging.app"]
+        try tar.run()
+        tar.waitUntilExit()
+
+        let engines = EngineManager()
+        try await engines.importArchive(archive)
+        let engine = try #require(engines.engine(named: "wine-staging-11.18"))
+        #expect(engine.isValid)
+        #expect(engine.family == .wineStaging)
+        #expect(engine.capabilities == Engine.Capabilities(rendererHooks: false, rosettaX87: false))
+    }
+}

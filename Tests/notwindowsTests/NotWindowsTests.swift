@@ -108,6 +108,21 @@ struct MiscTests {
         #expect(Engine.displayName(for: "WS12WineCX24.0.7_7") == "CrossOver 24.0.7 (rev 7)")
         #expect(Engine.displayName(for: "WS12WineGPTK1.1_3") == "GPTK 1.1 (rev 3)")
         #expect(Engine.displayName(for: "WS12WhiskyWine2.5.0_3") == "Whisky 2.5.0 (rev 3)")
+        #expect(Engine.displayName(for: "WS11Wine10.0_1") == "Wine 10.0 (rev 1)")
+        #expect(Engine.displayName(for: "wine-staging-11.18") == "Wine Staging 11.18")
+        #expect(Engine.displayName(for: "wine-devel-11.18") == "Wine Devel 11.18")
+        #expect(Engine.displayName(for: "wine-stable-10.0") == "Wine 10.0")
+    }
+
+    @Test @MainActor func groupsEnginesIntoFamilies() {
+        #expect(EngineFamily(engineName: "WS12WineSikarugir11.0_1") == .sikarugir)
+        #expect(EngineFamily(engineName: "WS11WineCX32Bit21.2.0") == .crossOver32)
+        #expect(EngineFamily(engineName: "20241018_WS11WineCX21.2.0") == .crossOver)
+        #expect(EngineFamily(engineName: "WS12WineGPTK1.1_3") == .gptk)
+        #expect(EngineFamily(engineName: "WS12WhiskyWine2.5.0_3") == .whisky)
+        #expect(EngineFamily(engineName: "wine-staging-11.18") == .wineStaging)
+        #expect(EngineFamily(engineName: "wine-devel-11.18") == .wineDevel)
+        #expect(EngineManager.engineName(forArchive: URL(fileURLWithPath: "/x/wine-devel-11.18-osx64.tar.xz")) == "wine-devel-11.18")
     }
 
     @Test func suggestsNamesFromFolders() {

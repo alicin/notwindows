@@ -26,6 +26,37 @@ struct Engine: Identifiable, Hashable {
 
     var isValid: Bool { loader.exists && wineserver.exists }
 
+    var family: EngineFamily { EngineFamily(engineName: name) }
+
+    /// What this build's ntdll picks up from the environment. Sikarugir's loads renderers and rosettax87 that way;
+    /// upstream Wine and some CrossOver builds don't, so those settings can't apply to them.
+    var capabilities: Capabilities { Capabilities.of(self) }
+
+    struct Capabilities: Equatable {
+        var rendererHooks: Bool
+        var rosettaX87: Bool
+
+        private static let lock = NSLock()
+        nonisolated(unsafe) private static var cache: [String: Capabilities] = [:]
+
+        static func of(_ engine: Engine) -> Capabilities {
+            let candidates = ["x86_64-unix/ntdll.so", "ntdll.so", "i386-unix/ntdll.so"].map { engine.wineLib.appendingPathComponent($0) }
+            // Without an ntdll to read, fall back to what notwindows assumed before it checked: Sikarugir's hooks,
+            // except in CrossOver's 32-bit builds.
+            guard let ntdll = candidates.first(where: \.exists) else {
+                return Capabilities(rendererHooks: !engine.isWin32Only, rosettaX87: !engine.isWin32Only)
+            }
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = cache[ntdll.path] { return cached }
+            let data = (try? Data(contentsOf: ntdll, options: .alwaysMapped)) ?? Data()
+            let found = Capabilities(rendererHooks: data.range(of: Data("WINEDLLPATH_DXMT".utf8)) != nil,
+                                     rosettaX87: data.range(of: Data("ROSETTA_X87_PATH".utf8)) != nil)
+            cache[ntdll.path] = found
+            return found
+        }
+    }
+
     var version: String {
         let raw = (try? String(contentsOf: bundle.appendingPathComponent("version"), encoding: .utf8)) ?? ""
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -36,6 +67,13 @@ struct Engine: Identifiable, Hashable {
 
     /// "WS12WineSikarugir11.0_1" -> "Sikarugir 11.0 (rev 1)", "WS11WineCX32Bit21.2.0" -> "CrossOver 21.2.0 (32-bit)"
     static func displayName(for name: String) -> String {
+        // Gcenx's upstream builds: "wine-staging-11.18" -> "Wine Staging 11.18"
+        if name.hasPrefix("wine-") {
+            let parts = name.split(separator: "-")
+            guard parts.count >= 3 else { return name }
+            let channel = parts[1] == "stable" ? "" : " " + parts[1].capitalized
+            return "Wine\(channel) \(parts[2...].joined(separator: "-"))"
+        }
         var s = name
         if let range = s.range(of: #"^WS\d+"#, options: .regularExpression) { s.removeSubrange(range) }
         let is32Bit = s.contains("32Bit")
@@ -50,12 +88,71 @@ struct Engine: Identifiable, Hashable {
         if let range = s.range(of: #"\d"#, options: .regularExpression) {
             s.insert(" ", at: range.lowerBound)
         }
+        if s.hasPrefix(" ") { s = "Wine" + s }
         s = s.replacingOccurrences(of: "CX", with: "CrossOver ")
             .replacingOccurrences(of: "  ", with: " ")
             .trimmingCharacters(in: .whitespaces)
         if let revision { s += " (rev \(revision))" }
         if is32Bit { s += " (32-bit)" }
         return s
+    }
+}
+
+/// Wine builds grouped the way people pick them: by who makes them and what they're for.
+enum EngineFamily: String, CaseIterable, Identifiable {
+    case sikarugir, crossOver, crossOver32, gptk, whisky, wineStaging, wineDevel, wine
+    var id: String { rawValue }
+
+    init(engineName name: String) {
+        switch true {
+        case name.hasPrefix("wine-staging"): self = .wineStaging
+        case name.hasPrefix("wine-devel"): self = .wineDevel
+        case name.hasPrefix("wine-"): self = .wine
+        case name.contains("CX32Bit"): self = .crossOver32
+        case name.contains("WineCX"): self = .crossOver
+        case name.contains("GPTK"): self = .gptk
+        case name.contains("Whisky"): self = .whisky
+        case name.contains("Sikarugir"): self = .sikarugir
+        default: self = .wine
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .sikarugir: "Sikarugir"
+        case .crossOver: "CrossOver"
+        case .crossOver32: "CrossOver 32-bit"
+        case .gptk: "Game Porting Toolkit"
+        case .whisky: "Whisky"
+        case .wineStaging: "Wine Staging"
+        case .wineDevel: "Wine Devel"
+        case .wine: "Wine"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .sikarugir: "Gcenx's Wine for Sikarugir, with DXMT, DXVK, D9VK and D3DMetal. The best start for most games."
+        case .crossOver: "Builds of CodeWeavers' CrossOver sources."
+        case .crossOver32: "Runs only 32-bit Windows programs, in a 32-bit prefix, drawing through WineD3D. Suits older games."
+        case .gptk: "The Wine from Apple's Game Porting Toolkit, made for D3DMetal and DirectX 12."
+        case .whisky: "The Wine build that shipped with the Whisky app."
+        case .wineStaging: "Upstream Wine with the Staging patches, built by Gcenx. Draws through WineD3D."
+        case .wineDevel: "Upstream development Wine, built by Gcenx. Draws through WineD3D."
+        case .wine: "Upstream Wine releases."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .sikarugir: "wineglass.fill"
+        case .crossOver, .crossOver32: "arrow.triangle.swap"
+        case .gptk: "apple.logo"
+        case .whisky: "drop.fill"
+        case .wineStaging: "flask.fill"
+        case .wineDevel: "hammer.fill"
+        case .wine: "cube.fill"
+        }
     }
 }
 

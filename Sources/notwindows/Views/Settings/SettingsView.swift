@@ -13,7 +13,7 @@ struct SettingsView: View {
             GeneralSettingsView()
                 .tabItem { Label("Library", systemImage: "books.vertical") }
         }
-        .frame(width: 640, height: 520)
+        .frame(width: 720, height: 640)
     }
 }
 
@@ -61,114 +61,228 @@ private struct GeneralSettingsView: View {
 private struct EnginesSettingsView: View {
     @Environment(EngineManager.self) private var engines
     @Environment(GameLibrary.self) private var library
-    @State private var showAll = false
 
     var body: some View {
-        @Bindable var engines = engines
-
-        Form {
-            Section("Installed") {
-                if engines.installed.isEmpty {
-                    Text("No engines installed yet.").foregroundStyle(.secondary)
-                } else {
-                    Picker("Default engine", selection: $engines.defaultEngineName) {
-                        ForEach(engines.installed) { Text($0.displayName).tag(Optional($0.name)) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                SettingsCard(title: "Installed", symbol: "cpu.fill", tint: .purple,
+                             subtitle: engines.installed.isEmpty ? "Nothing yet" : "\(engines.installed.count) engine\(engines.installed.count == 1 ? "" : "s")",
+                             footer: "New games use the default engine; each game can pick another in its General tab.") {
+                    Button("Import Archive…") { importArchive() }
+                        .buttonStyle(.link)
+                } content: {
+                    if engines.installed.isEmpty {
+                        SettingRow(title: "No engines installed yet", detail: "Download one below.")
                     }
-                    ForEach(engines.installed) { engine in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(engine.displayName)
-                                Text(engine.version).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            let users = library.games.filter { $0.engineName == engine.name }.count
-                            if users > 0 {
-                                Text("\(users) game\(users == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Button("Remove", role: .destructive) {
-                                do { try engines.remove(engine) } catch { library.report("Couldn't remove engine", error) }
-                            }
-                            .disabled(users > 0)
-                        }
+                    ForEach(Array(engines.installed.enumerated()), id: \.element.id) { index, engine in
+                        if index > 0 { RowDivider() }
+                        InstalledEngineRow(engine: engine)
                     }
                 }
-                Button("Import Engine Archive…") {
-                    if let url = Panels.chooseFile(message: "Choose a Sikarugir engine (.tar.xz)", types: [UTType(filenameExtension: "xz") ?? .archive]) {
-                        Task {
-                            do { try await engines.importArchive(url) } catch { library.report("Import failed", error) }
-                        }
-                    }
-                }
-            }
 
-            if !engines.localArchives.isEmpty {
-                Section("Found in Sikarugir") {
-                    ForEach(engines.localArchives, id: \.self) { archive in
-                        let name = EngineManager.engineName(forArchive: archive)
-                        HStack {
-                            Text(Engine.displayName(for: name))
-                            Spacer()
-                            if engines.progress[name] != nil {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Button("Import") {
-                                    Task { do { try await engines.importArchive(archive) } catch { library.report("Import failed", error) } }
+                if !engines.localArchives.isEmpty {
+                    SettingsCard(title: "Found in Sikarugir", symbol: "tray.and.arrow.down.fill", tint: .teal,
+                                 subtitle: "Engines the Sikarugir Creator already downloaded") {
+                    } content: {
+                        ForEach(Array(engines.localArchives.enumerated()), id: \.element) { index, archive in
+                            if index > 0 { RowDivider() }
+                            let name = EngineManager.engineName(forArchive: archive)
+                            SettingRow(title: Engine.displayName(for: name), detail: archive.lastPathComponent) {
+                                if engines.progress[name] != nil {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Button("Import") {
+                                        Task { do { try await engines.importArchive(archive) } catch { library.report("Import failed", error) } }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            Section {
-                if engines.catalog.isEmpty {
-                    HStack {
-                        if engines.isRefreshingCatalog { ProgressView().controlSize(.small) }
-                        Text(engines.catalogError ?? "Loading…").foregroundStyle(.secondary)
-                    }
-                }
-                ForEach(engines.catalog.filter { showAll || $0.isRecommended }) { item in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 6) {
-                                Text(item.displayName)
-                                if item.isRecommended {
-                                    Text("Recommended")
-                                        .font(.caption2.weight(.semibold))
-                                        .padding(.horizontal, 6).padding(.vertical, 1)
-                                        .background(.tint.opacity(0.15), in: Capsule())
-                                        .foregroundStyle(.tint)
-                                }
-                            }
-                            Text("\(item.name) · \(Format.bytes(item.size))").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if let progress = engines.progress[item.name] {
-                            ProgressView(value: progress).frame(width: 110)
-                        } else if engines.isInstalled(item.name) {
-                            Label("Installed", systemImage: "checkmark").foregroundStyle(.secondary).labelStyle(.titleAndIcon)
-                        } else {
-                            Button("Download") {
-                                Task { do { try await engines.install(item) } catch { library.report("Download failed", error) } }
-                            }
-                        }
-                    }
-                }
-            } header: {
                 HStack {
-                    Text("Available")
+                    Text("Available").font(.title3.bold())
                     Spacer()
-                    Toggle("Show all versions", isOn: $showAll).toggleStyle(.checkbox).font(.caption)
+                    if engines.isRefreshingCatalog { ProgressView().controlSize(.small) }
                     Button { Task { await engines.refreshCatalog() } } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(.borderless)
                         .help("Refresh")
                 }
+                if let error = engines.catalogError, engines.catalog.isEmpty {
+                    NoticeRow("Couldn't load the engine list: \(error)")
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                ForEach(EngineFamily.allCases) { family in
+                    let items = engines.catalog.filter { $0.family == family }
+                    if !items.isEmpty { EngineFamilyCard(family: family, items: items) }
+                }
+                Text("The list comes from Sikarugir's engine releases and Gcenx's macOS Wine builds on GitHub.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            .padding(20)
         }
-        .formStyle(.grouped)
         .task {
             engines.reload()
             if engines.catalog.isEmpty { await engines.refreshCatalog() }
+        }
+    }
+
+    private func importArchive() {
+        guard let url = Panels.chooseFile(message: "Choose a Wine engine (.tar.xz)", types: [UTType(filenameExtension: "xz") ?? .archive]) else { return }
+        Task {
+            do { try await engines.importArchive(url) } catch { library.report("Import failed", error) }
+        }
+    }
+}
+
+private struct InstalledEngineRow: View {
+    @Environment(EngineManager.self) private var engines
+    @Environment(GameLibrary.self) private var library
+    let engine: Engine
+    @State private var size: Int64?
+
+    var body: some View {
+        let users = library.games.filter { $0.engineName == engine.name }.count
+        let isDefault = engines.defaultEngineName == engine.name
+        let capabilities = engine.capabilities
+        let update = engines.catalog.first { $0.family == engine.family && !engines.isInstalled($0.name) }
+            .flatMap { $0.name.localizedStandardCompare(engine.name) == .orderedDescending ? $0 : nil }
+
+        HStack(alignment: .center, spacing: 12) {
+            SymbolTile(symbol: engine.family.symbol, tint: engine.family.tint, size: 32)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(engine.displayName).font(.headline)
+                    if isDefault { StatusPill(text: "Default", symbol: "star.fill", tint: .orange) }
+                }
+                Text([engine.version, size.map(Format.bytes), users > 0 ? "\(users) game\(users == 1 ? "" : "s")" : nil]
+                    .compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if capabilities.rendererHooks {
+                        StatusPill(text: "DXMT · DXVK · D3DMetal", tint: .green)
+                    } else {
+                        StatusPill(text: "WineD3D only")
+                    }
+                    if capabilities.rosettaX87 { StatusPill(text: "rosettax87", tint: .blue) }
+                    if engine.isWin32Only { StatusPill(text: "32-bit only", tint: .orange) }
+                }
+            }
+            Spacer(minLength: 8)
+            if let update {
+                if let progress = engines.progress[update.name] {
+                    ProgressView(value: progress).frame(width: 80)
+                } else {
+                    Button("Update") {
+                        Task { do { try await engines.install(update) } catch { library.report("Download failed", error) } }
+                    }
+                    .help("Download \(update.displayName)")
+                }
+            }
+            Menu {
+                Button("Make Default", systemImage: "star") { engines.defaultEngineName = engine.name }
+                    .disabled(isDefault)
+                Button("Show in Finder", systemImage: "folder") { NSWorkspace.shared.activateFileViewerSelecting([engine.directory]) }
+                Divider()
+                Button("Remove", systemImage: "trash", role: .destructive) {
+                    do { try engines.remove(engine) } catch { library.report("Couldn't remove engine", error) }
+                }
+                .disabled(users > 0)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(users > 0 ? "In use by \(users) game\(users == 1 ? "" : "s"), so it can't be removed" : "More")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .task(id: engine.name) {
+            let directory = engine.directory
+            size = await Task.detached(priority: .utility) { FileManager.default.allocatedSize(of: directory) }.value
+        }
+    }
+}
+
+/// One family of engines: its newest build up front, older ones folded away.
+private struct EngineFamilyCard: View {
+    @Environment(EngineManager.self) private var engines
+    let family: EngineFamily
+    let items: [EngineCatalogItem]
+    @State private var showsOlder = false
+
+    var body: some View {
+        SettingsCard(title: family.title, symbol: family.symbol, tint: family.tint, subtitle: family.summary) {
+            if let latest = items.first {
+                StatusPill(text: latest.displayName.replacingOccurrences(of: family.title + " ", with: ""), tint: family.tint)
+            }
+        } content: {
+            if let latest = items.first { CatalogRow(item: latest) }
+            if items.count > 1 {
+                RowDivider()
+                Button {
+                    withAnimation(.smooth(duration: 0.25)) { showsOlder.toggle() }
+                } label: {
+                    HStack {
+                        Text(showsOlder ? "Hide older versions" : "\(items.count - 1) older version\(items.count == 2 ? "" : "s")")
+                        Image(systemName: "chevron.down")
+                            .rotationEffect(.degrees(showsOlder ? 180 : 0))
+                            .font(.caption.weight(.semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if showsOlder {
+                    ForEach(items.dropFirst()) { item in
+                        RowDivider()
+                        CatalogRow(item: item)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct CatalogRow: View {
+    @Environment(EngineManager.self) private var engines
+    @Environment(GameLibrary.self) private var library
+    let item: EngineCatalogItem
+
+    var body: some View {
+        SettingRow(title: item.displayName, detail: "\(item.name) · \(Format.bytes(item.size))",
+                   badge: item.isRecommended ? "Recommended" : nil, badgeTint: .green) {
+            if let progress = engines.progress[item.name] {
+                ProgressView(value: progress).frame(width: 110)
+            } else if engines.isInstalled(item.name) {
+                Label("Installed", systemImage: "checkmark").foregroundStyle(.secondary).labelStyle(.titleAndIcon)
+            } else {
+                Button("Download") {
+                    Task { do { try await engines.install(item) } catch { library.report("Download failed", error) } }
+                }
+            }
+        }
+    }
+}
+
+extension EngineFamily {
+    var tint: Color {
+        switch self {
+        case .sikarugir: .purple
+        case .crossOver: .red
+        case .crossOver32: .orange
+        case .gptk: .gray
+        case .whisky: .blue
+        case .wineStaging: .teal
+        case .wineDevel: .indigo
+        case .wine: .brown
         }
     }
 }

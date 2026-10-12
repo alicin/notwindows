@@ -108,10 +108,10 @@ enum WineEnvironment {
         return env
     }
 
-    /// The renderer settings that take effect with `engine`. The WINEDLLPATH_* renderer hooks are Sikarugir's;
-    /// CrossOver's 32-bit engine always draws through WineD3D.
+    /// The renderer settings that take effect with `engine`. The WINEDLLPATH_* renderer hooks are Sikarugir's; builds
+    /// without them (CrossOver's 32-bit engine, upstream Wine) always draw through WineD3D.
     static func renderers(for settings: GameSettings, engine: Engine) -> GameSettings {
-        guard engine.isWin32Only else { return settings }
+        guard !engine.capabilities.rendererHooks else { return settings }
         var settings = settings
         settings.direct3DBackend = .wined3d
         settings.direct3D9Backend = .wined3d
