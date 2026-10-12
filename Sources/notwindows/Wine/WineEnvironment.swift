@@ -43,7 +43,8 @@ enum WineEnvironment {
         env["WINEDEBUG"] = settings.logLevel.winedebug
         env["WINEMSYNC"] = settings.msync ? "1" : "0"
         env["WINEESYNC"] = settings.esync ? "1" : "0"
-        if settings.advertiseAVX { env["ROSETTA_ADVERTISE_AVX"] = "1" }
+        // wine32on64 crashes at startup when Rosetta advertises AVX.
+        if settings.advertiseAVX && !engine.isWin32Only { env["ROSETTA_ADVERTISE_AVX"] = "1" }
         env["FEX_X87REDUCEDPRECISION"] = "1"
         env["DOTNET_EnableWriteXorExecute"] = "0"
         env["CX_FWD_COMPAT_GL_CTX"] = "1"

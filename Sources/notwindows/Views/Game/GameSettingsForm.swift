@@ -250,8 +250,11 @@ struct GameSettingsForm: View {
         Section {
             Toggle(isOn: setting(\.advertiseAVX)) {
                 Text("Advertise AVX to games")
-                Text("Lets games that require AVX start under Rosetta 2.")
+                Text(engine?.isWin32Only == true
+                     ? "Not available with \(engine?.displayName ?? "this engine"), which crashes when Rosetta advertises AVX."
+                     : "Lets games that require AVX start under Rosetta 2.")
             }
+            .disabled(engine?.isWin32Only == true)
         } header: {
             Text("CPU")
         }

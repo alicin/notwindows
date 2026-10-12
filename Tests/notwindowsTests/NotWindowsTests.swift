@@ -263,6 +263,7 @@ struct Win32EngineTests {
         #expect(cxEnv["WINEARCH"] == "win32")
         #expect(cxEnv["DYLD_FALLBACK_LIBRARY_PATH"]?.hasPrefix(cx.bundle.appendingPathComponent("lib32on64").path) == true)
         #expect(cxEnv.keys.contains { $0.hasPrefix("WINEDLLPATH") } == false)
+        #expect(cxEnv["ROSETTA_ADVERTISE_AVX"] == nil)
 
         let wow64Env = WineEnvironment.make(engine: try engine(win32: false), runtime: runtime, prefix: prefix, settings: settings, base: [:])
         #expect(wow64Env["WINEARCH"] == nil)
