@@ -5,8 +5,8 @@
 <h1 align="center">notwindows</h1>
 
 <p align="center">
-  <b>A native macOS games launcher built on Sikarugir's Wine engines and runtime.</b><br>
-  One library, with separate toggles for every setting on every game.
+  <b>A native macOS launcher for Windows games, built on Sikarugir's Wine engines and runtime.</b><br>
+  One library, with its own settings for every game.
 </p>
 
 <p align="center">
@@ -16,57 +16,34 @@
   <img src="https://img.shields.io/badge/powered%20by-Sikarugir%20Wine-8B1E5C" alt="Powered by Sikarugir Wine">
 </p>
 
-![Library with a game running](docs/library-running.png)
+<p align="center"><img src="docs/tour.gif" width="800" alt="Clicking through game pages in notwindows"></p>
 
-notwindows keeps your Windows games in one library. Each game gets its own Windows prefix and its own settings for renderer, sync, display and input, and they're applied every time it launches. Wine engines and the graphics runtime are downloaded once and shared by every game.
+notwindows keeps your Windows games in one library. Each game gets its own prefix and its own renderer, sync, display and input settings, applied every time it launches. Wine engines and the graphics runtime are downloaded once and shared by every game.
 
 ## Screenshots
 
 | | |
 | --- | --- |
-| ![Game page – graphics](docs/game-graphics.png) | ![Game page – dark](docs/game-dark.png) |
-| **Per-game renderer:** WineD3D, DXMT, DXVK or D3DMetal, plus D9VK and cnc-ddraw | **Dark mode:** every game page is tinted from its icon |
-| ![Library – dark](docs/library-dark.png) | ![Performance settings](docs/game-performance.png) |
-| **Now playing:** live timer, glowing ring and one-click Stop | **Performance:** MSync, ESync, AVX under Rosetta |
-| ![Onboarding](docs/onboarding.png) | ![Engines](docs/settings-engines.png) |
-| **First run:** Rosetta check, then the runtime and engine download in one click | **Engine manager:** browse and install Sikarugir, CrossOver, GPTK and Whisky builds |
-
-<p align="center"><img src="docs/smart-setup.png" width="700" alt="Smart Setup"></p>
-<p align="center"><b>Smart Setup:</b> recognises the game, then suggests settings from its executable, umu-protonfixes, Lutris and ProtonDB</p>
-
-![Winetricks browser](docs/winetricks.png)
-<p align="center"><b>Winetricks browser:</b> all 567 verbs by category, with search, installed status, multi-select, a live log and cancel</p>
-
-<p align="center"><img src="docs/add-game.png" width="520" alt="Add game sheet"></p>
-
-<sub>The sample library uses Wine's built-in programs (Notepad, Minesweeper, …) as stand-in games.</sub>
+| ![Library with a game running](docs/library-running.png) | ![Recently played](docs/library-dark.png) |
+| **Library:** artwork from each game's icon, a Now Playing banner and live timer | **Recently played**, grouped by day |
+| ![Graphics settings](docs/game-graphics.png) | ![Game page](docs/game-dark.png) |
+| **Graphics:** a renderer per game, and the path each DirectX version takes to Metal | **Game pages** read the `.exe`: 32/64-bit, DirectX version, engine and studio |
+| ![Performance settings](docs/game-performance.png) | ![Locked settings](docs/game-locked.png) |
+| **Performance:** MSync, ESync, AVX, WineRosetta and rosettax87 | **Locked settings** show what's actually in effect, and why |
 
 ## Features
 
-- **Library:** icons extracted straight from each `.exe`, artwork coloured from the icon, a "Continue playing" banner, favorites, recently played, search, and playtime tracking.
-- **Play / Stop:** notwindows watches the whole prefix through `wineserver`, so games started from a launcher (Steam, Battle.net, …) count as running until the last process exits.
-- **Per-game settings:**
-  - **Graphics:** D3D10/11/12 backend (WineD3D, DXMT, DXVK, D3DMetal), D3D8/9 backend (WineD3D, D9VK), cnc-ddraw, Vulkan driver (MoltenVK or KosmicKrisp), DXVK version, async shaders and HUD, Metal HUD, MoltenVK fast math, Retina mode, font smoothing.
-  - **Performance:** MSync, ESync, advertising AVX under Rosetta, WineRosetta for 32-bit World of Warcraft clients (1.12.1, 2.4.3, 3.3.5a), which is turned on automatically when you add a 32-bit `Wow.exe`, and experimental [rosettax87](https://github.com/Lifeisawful/rosettax87_jit) for much faster x87 math in old 32-bit games.
-  - **Input:** ⌘ as Ctrl, ⌥ as Alt, MFi vs HID controllers.
-  - **System:** Windows version, log level, skipping Mono/Gecko, DLL overrides, extra environment variables.
-- **Smart Setup:** every new game is scanned and matched to a known title, and recommended settings are applied automatically. Installs always wait for your review in a sheet that shows each change and where it came from.
-  - **From the executable** (offline): the DLLs it imports give away the DirectX version (picking DXMT, D3DMetal or D9VK), and also cnc-ddraw, Visual C++ runtimes, d3dx, PhysX and .NET needs. 32-bit WoW gets WineRosetta, and anti-cheat (EAC, BattlEye, …) gets a warning.
-  - **Per-game fixes:** the game is matched against Steam and the [umu-database](https://github.com/Open-Wine-Components/umu-database), then its [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes) script is read without being run. Winetricks verbs, DLL overrides, env vars, launch arguments and sync options are translated; Linux-only parts are listed but skipped. If there's no fix, notwindows falls back to [Lutris](https://lutris.net) installer scripts, and shows the [ProtonDB](https://www.protondb.com) tier as a badge.
-- **Steam library:** install Windows Steam as a game, and every game you install through it shows up as its own entry with its own settings, picked up automatically within seconds. Play starts Steam in the background if needed, then launches the game directly so its settings apply (`steam_appid.txt` and the app-ID env vars keep it from relaunching through the Steam client). Per-game registry settings are scoped with Wine's AppDefaults keys, so games sharing Steam's prefix don't overwrite each other. Each game's running state and Stop button follow its own processes, so Steam keeps running. Smart Setup matches these games by their exact Steam app ID.
-- **Browser sign-in links:** launchers that log in through Safari finish by opening a link like `jagex://` or `com.epicgames.launcher://`. notwindows finds the link types registered inside each prefix and gives each one a tiny background helper app registered with macOS. When a link arrives, it runs the command the launcher registered, with the link filled in. Link types another Mac app already owns are left alone unless you take them over in Settings → Links.
-- **Adding games:**
-  - Point at an installed `.exe`.
-  - Run a setup file into a fresh prefix, then pick the game's executable from a ranked list.
-  - Import an existing Sikarugir/Wineskin wrapper. Its prefix stays where it is.
-  - Drag and drop onto the window or the Dock icon.
-- **Tools per game:** winecfg, regedit, Task Manager, Control Panel, Explorer, cmd, a Winetricks browser (every verb from Sikarugir's fork, by category, with search, installed status, reinstall/silent options, a live log and cancel), running a one-off program in the prefix, opening `C:`, and viewing the last run's log with the full environment that was used.
-- **Engine manager:** lists Sikarugir's engine releases (marking the recommended ones), downloads them, imports `.tar.xz` archives, and picks up engines the Sikarugir Creator has already downloaded.
-- **Polish:** cards tilt towards the pointer, running games get an animated ring, toasts appear, symbols animate, and every effect respects Reduce Motion.
+- **Library:** icons from each `.exe`, favorites, recently played, sorting, search and playtime. Games started from a launcher (Steam, Battle.net, …) count as running until their last process exits.
+- **Per-game settings:** Direct3D 10–12 through WineD3D, DXMT, DXVK or D3DMetal; Direct3D 8/9 through WineD3D or D9VK; cnc-ddraw; MoltenVK or KosmicKrisp; Retina, HUDs, MSync/ESync, AVX, key mapping, Windows version, DLL overrides and environment variables.
+- **Old 32-bit games:** CrossOver's 32-bit engine, WineRosetta for 32-bit World of Warcraft clients and experimental [rosettax87](https://github.com/Lifeisawful/rosettax87_jit) for fast x87 math.
+- **Smart Setup:** reads the executable, matches the game against [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net) and [ProtonDB](https://www.protondb.com), and suggests settings with their sources. Installs always wait for your review.
+- **Share settings:** export a game's setup to a `.notwindows` file that anyone can import. It carries the settings, launch arguments, engine and Winetricks components, but not your paths or play history.
+- **Steam library:** install Windows Steam once and every game you install through it shows up as its own entry, with its own settings.
+- **Browser sign-ins:** links like `jagex://` or `com.epicgames.launcher://` that Safari opens are handed back to the launcher in the right prefix.
+- **Tools:** winecfg, regedit, Task Manager, a Winetricks browser with every verb, running programs in a prefix, and logs. Add installed games, run setup files, import Sikarugir/Wineskin wrappers, or drop an `.exe` on the window.
+- **Engines:** Sikarugir, CrossOver (including 32-bit), GPTK and Whisky builds from Sikarugir's releases, plus upstream Wine Devel and Staging from Gcenx's macOS builds. Each engine shows what it supports, and settings it can't use are locked with the reason.
 
 ## Install
-
-Build it yourself:
 
 ```bash
 git clone https://github.com/alicin/notwindows.git
@@ -80,52 +57,19 @@ cd notwindows && scripts/build-app.sh
 cp -R build/notwindows.app /Applications/
 ```
 
-On first launch notwindows offers to download the runtime (~96 MB) and the recommended engine (~167 MB). The engines are Intel builds, so Rosetta 2 is required:
-
-```bash
-softwareupdate --install-rosetta --agree-to-license
-```
-
-The app is ad-hoc signed. If Gatekeeper complains, right-click the app and choose **Open**.
+On first launch notwindows offers the runtime (~96 MB) and an engine (~167 MB). Engines are Intel builds, so Rosetta 2 is required (`softwareupdate --install-rosetta --agree-to-license`). The app is ad-hoc signed; if Gatekeeper complains, right-click it and choose **Open**.
 
 ## Development
 
-```bash
-swift test
-```
+Run `swift test`, build with `scripts/build-app.sh debug`, and set `NOTWINDOWS_HOME` to point the app at a separate library. Everything else lives in `~/Library/Application Support/notwindows`: `Engines`, `Runtime`, and one folder per game under `Games`.
 
-```bash
-scripts/build-app.sh debug
-```
-
-Set `NOTWINDOWS_HOME` to point the app at a different library folder:
-
-```bash
-open -n build/notwindows.app --env NOTWINDOWS_HOME=/tmp/nw-test
-```
-
-## How it works
-
-| Piece | Source | Location |
-| --- | --- | --- |
-| Engines | `Sikarugir-App/Engines` releases (`wswine.bundle`) | `~/Library/Application Support/notwindows/Engines/<name>` |
-| Runtime | `Frameworks/` and `Resources/vulkan/` from the latest `Sikarugir-App/Template` | `…/notwindows/Runtime/Template-x.y.z` |
-| Games | one folder per game: `game.json`, `icon.png`, `prefix/`, `Logs/`, `Cache/` | `…/notwindows/Games/<uuid>` |
-
-At launch, [`WineEnvironment`](Sources/notwindows/Wine/WineEnvironment.swift) turns a game's settings into the same environment Sikarugir's wrapper launcher exports. Sikarugir's Wine fork reads `WINEDLLPATH_DXMT`, `WINEDLLPATH_DXVK`, `WINEDLLPATH_D3DMETAL`, `WINEDLLPATH_D9VK` and `WINEDLLPATH_CNCD` and loads the matching renderer DLLs straight from the shared runtime, so nothing is copied into the prefix. Registry-backed settings (Retina, key mapping, font smoothing, Windows version) are written with `regedit /S`, and only when they've changed.
-
-Two quirks of the Sikarugir engines, found by tracing the official launcher:
-
-- Use `lib/wine/x86_64-unix/wine`. `bin/wine` can't spawn child processes outside a wrapper.
-- `SikarugirAppWine11=1` must be set, or `wineboot` and every other child process exits immediately.
+At launch, [`WineEnvironment`](Sources/notwindows/Wine/WineEnvironment.swift) turns a game's settings into the environment Sikarugir's wrapper launcher exports, so renderer DLLs load straight from the shared runtime and nothing is copied into the prefix.
 
 ## Credits & licensing
 
-notwindows is a front end. The Wine engines, the runtime (MoltenVK, KosmicKrisp, DXVK, D9VK, DXMT, cnc-ddraw, GStreamer) and winetricks it downloads all come from the [Sikarugir project](https://github.com/Sikarugir-App/Sikarugir) and are covered by their own licenses (Wine is LGPL-2.1).
+The Wine engines, the runtime (MoltenVK, KosmicKrisp, DXVK, D9VK, DXMT, cnc-ddraw, GStreamer) and winetricks come from the [Sikarugir project](https://github.com/Sikarugir-App/Sikarugir) under their own licenses (Wine is LGPL-2.1). D3DMetal is © Apple and covered by the Game Porting Toolkit license, which doesn't allow commercial ports. notwindows isn't affiliated with Sikarugir, CodeWeavers or Apple.
 
-D3DMetal is © Apple and covered by Apple's Game Porting Toolkit license, which doesn't allow commercial ports. See the [Sikarugir repository](https://github.com/Sikarugir-App/Sikarugir/tree/main/D3DMetal).
-
-notwindows isn't affiliated with Sikarugir, CodeWeavers or Apple.
+<sub>Game names and icons in the screenshots belong to their publishers and are shown only to illustrate the app.</sub>
 
 ---
 

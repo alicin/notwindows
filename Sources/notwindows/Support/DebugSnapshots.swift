@@ -3,7 +3,7 @@ import AppKit
 
 /// Debug-only remote control for UI review: post the distributed notification
 /// `com.bunniesinc.notwindows.debug` with an object such as `snapshot:/tmp/a.png`, `select:all`, `select:<game name>`,
-/// `tab:graphics` or `settings`.
+/// `tab:graphics`, `fakerun:<game name>` or `settings`. `script:` and `record:` together capture walkthroughs for the README.
 @MainActor
 enum DebugSnapshots {
     static var tabHandler: ((String) -> Void)?
@@ -34,6 +34,22 @@ enum DebugSnapshots {
             try? FileManager.default.createDirectory(atPath: pieces[0], withIntermediateDirectories: true)
             handle(pieces[1], library: library, navigation: navigation)
             burst(window: window, directory: pieces[0], frame: 0)
+        case "record":
+            // record:<dir>|<seconds>|<fps>[|retina] captures the window off the main thread, so the UI keeps animating.
+            let pieces = argument.split(separator: "|").map(String.init)
+            guard pieces.count >= 3, let seconds = Double(pieces[1]), let fps = Double(pieces[2]),
+                  let window = NSApp.orderedWindows.first(where: { $0.isVisible && $0.frame.width > 300 }) else { return }
+            try? FileManager.default.createDirectory(atPath: pieces[0], withIntermediateDirectories: true)
+            record(windowNumber: UInt32(window.windowNumber), directory: pieces[0], seconds: seconds, fps: fps, retina: pieces.count > 3)
+        case "script":
+            // script:<seconds>><command>~<seconds>><command>… runs each command at its offset from now.
+            for step in argument.components(separatedBy: "~") {
+                let pieces = step.split(separator: ">", maxSplits: 1).map(String.init)
+                guard pieces.count == 2, let delay = Double(pieces[0]) else { continue }
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    MainActor.assumeIsolated { handle(pieces[1], library: library, navigation: navigation) }
+                }
+            }
         case "activate":
             NSApp.activate(ignoringOtherApps: true)
             NSApp.windows.first { $0.isVisible && $0.frame.width > 300 }?.makeKeyAndOrderFront(nil)
@@ -54,6 +70,11 @@ enum DebugSnapshots {
             if let game = library.games.first(where: { $0.name == argument }) { library.play(game.id) }
         case "stop":
             if let game = library.games.first(where: { $0.name == argument }) { library.stop(game.id) }
+        case "fakerun":
+            // Toggles a game's running state without starting Wine, for reviewing the running UI.
+            if let game = library.games.first(where: { $0.name == argument }) {
+                library.states[game.id] = library.state(of: game.id).isRunning ? .idle : .running(since: Date())
+            }
         case "winetricks":
             let pieces = argument.split(separator: "|").map(String.init)
             if pieces.count == 2, let game = library.games.first(where: { $0.name == pieces[0] }) {
@@ -98,6 +119,32 @@ enum DebugSnapshots {
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(directory)/\(String(format: "%02d", frame)).png"))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { burst(window: window, directory: directory, frame: frame + 1) }
+    }
+
+    /// Frames are named by their slot in the timeline, so a slow capture leaves a gap rather than shifting later frames.
+    private static func record(windowNumber: UInt32, directory: String, seconds: Double, fps: Double, retina: Bool) {
+        guard let capture = windowImage else { return }
+        let writer = DispatchQueue(label: "com.bunniesinc.notwindows.record", attributes: .concurrent)
+        let inFlight = DispatchSemaphore(value: 24)
+        Thread.detachNewThread {
+            let start = Date()
+            var slot = 0
+            while slot < Int(seconds * fps) {
+                let due = start.addingTimeInterval(Double(slot) / fps)
+                if due.timeIntervalSinceNow > 0 { Thread.sleep(until: due) }
+                slot = Int(Date().timeIntervalSince(start) * fps)
+                // kCGWindowListOptionIncludingWindow, kCGWindowImageBoundsIgnoreFraming | best or nominal resolution
+                if let image = capture(.null, 1 << 3, windowNumber, 1 << 0 | (retina ? 1 << 3 : 1 << 4))?.takeRetainedValue() {
+                    let name = "\(directory)/\(String(format: "%04d", slot)).png"
+                    inFlight.wait()
+                    writer.async {
+                        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: name))
+                        inFlight.signal()
+                    }
+                }
+                slot += 1
+            }
+        }
     }
 }
 #endif
