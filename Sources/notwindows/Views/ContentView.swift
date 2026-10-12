@@ -86,11 +86,11 @@ struct ContentView: View {
             GameDetailView(gameID: id)
                 .id(id)
         case .favorites:
-            LibraryGridView(title: "Favorites", filter: .favorites)
+            LibraryGridView(filter: .favorites)
         case .recent:
-            LibraryGridView(title: "Recently Played", filter: .recent)
+            LibraryGridView(filter: .recent)
         default:
-            LibraryGridView(title: "All Games", filter: .all)
+            LibraryGridView(filter: .all)
         }
     }
 

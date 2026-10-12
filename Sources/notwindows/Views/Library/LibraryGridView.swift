@@ -2,6 +2,84 @@ import SwiftUI
 
 enum LibraryFilter {
     case all, favorites, recent
+
+    var title: String {
+        switch self {
+        case .all: "All Games"
+        case .favorites: "Favorites"
+        case .recent: "Recently Played"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .all: "square.grid.2x2.fill"
+        case .favorites: "star.fill"
+        case .recent: "clock.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .all: Color(red: 0.74, green: 0.3, blue: 0.68)
+        case .favorites: .orange
+        case .recent: .blue
+        }
+    }
+}
+
+enum LibrarySort: String, CaseIterable, Identifiable {
+    case name, lastPlayed, playtime, added
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .name: "Name"
+        case .lastPlayed: "Recently Played"
+        case .playtime: "Most Played"
+        case .added: "Date Added"
+        }
+    }
+
+    func sorted(_ games: [Game]) -> [Game] {
+        games.sorted { a, b in
+            switch self {
+            case .lastPlayed where a.lastPlayedAt != b.lastPlayedAt: (a.lastPlayedAt ?? .distantPast) > (b.lastPlayedAt ?? .distantPast)
+            case .playtime where a.totalPlaytime != b.totalPlaytime: a.totalPlaytime > b.totalPlaytime
+            case .added where a.addedAt != b.addedAt: a.addedAt > b.addedAt
+            default: a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+        }
+    }
+}
+
+/// Recently played games grouped by day, with Finder's Recents headings.
+private struct RecentSection {
+    let title: String
+    var games: [Game]
+    let offset: Int
+
+    static func group(_ games: [Game], now: Date = Date(), calendar: Calendar = .current) -> [RecentSection] {
+        var sections: [RecentSection] = []
+        for (index, game) in games.enumerated() {
+            let title = heading(for: game.lastPlayedAt ?? .distantPast, now: now, calendar: calendar)
+            if sections.last?.title == title {
+                sections[sections.count - 1].games.append(game)
+            } else {
+                sections.append(RecentSection(title: title, games: [game], offset: index))
+            }
+        }
+        return sections
+    }
+
+    private static func heading(for date: Date, now: Date, calendar: Calendar) -> String {
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? .max
+        if days < 7 { return "Previous 7 Days" }
+        if days < 30 { return "Previous 30 Days" }
+        return "Earlier"
+    }
 }
 
 struct LibraryGridView: View {
@@ -10,14 +88,14 @@ struct LibraryGridView: View {
     @Environment(RuntimeManager.self) private var runtime
     @Environment(AppNavigation.self) private var navigation
 
-    let title: String
     let filter: LibraryFilter
+    @AppStorage("librarySort") private var sort = LibrarySort.name
 
     private var games: [Game] {
         var result = library.games
         switch filter {
-        case .all: break
-        case .favorites: result = result.filter(\.isFavorite)
+        case .all: result = sort.sorted(result)
+        case .favorites: result = sort.sorted(result.filter(\.isFavorite))
         case .recent:
             result = result.filter { $0.lastPlayedAt != nil }
                 .sorted { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
@@ -55,18 +133,21 @@ struct LibraryGridView: View {
                 if games.isEmpty {
                     emptyState
                         .frame(maxWidth: .infinity, minHeight: needsSetup ? 220 : 420)
+                } else if filter == .recent {
+                    ForEach(RecentSection.group(games), id: \.title) { section in
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text(section.title)
+                                .font(.title2.bold())
+                            grid(section.games, startIndex: section.offset)
+                        }
+                    }
                 } else {
                     VStack(alignment: .leading, spacing: 14) {
                         if featured != nil {
                             Text("Library")
                                 .font(.title2.bold())
                         }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 210), spacing: 24)], spacing: 28) {
-                            ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
-                                GameCard(game: game)
-                                    .staggeredAppear(index, id: game.id)
-                            }
-                        }
+                        grid(games)
                     }
                 }
             }
@@ -76,8 +157,32 @@ struct LibraryGridView: View {
             .animation(.smooth(duration: 0.35), value: featured?.id)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: games.map(\.id))
         }
-        .navigationTitle(title)
+        .navigationTitle(filter.title)
         .navigationSubtitle(games.isEmpty ? "" : "\(games.count) game\(games.count == 1 ? "" : "s")")
+        .toolbar {
+            if filter != .recent {
+                ToolbarItem {
+                    Menu {
+                        Picker("Sort By", selection: $sort) {
+                            ForEach(LibrarySort.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Label("Sort By", systemImage: "arrow.up.arrow.down")
+                    }
+                    .help("Sort by \(sort.title.lowercased())")
+                }
+            }
+        }
+    }
+
+    private func grid(_ games: [Game], startIndex: Int = 0) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 168, maximum: 210), spacing: 24)], spacing: 28) {
+            ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
+                GameCard(game: game, showsPlaytime: filter != .recent && sort == .playtime)
+                    .staggeredAppear(startIndex + index, id: game.id)
+            }
+        }
     }
 
     @ViewBuilder
@@ -100,9 +205,17 @@ struct LibraryGridView: View {
                     .buttonStyle(.link)
             }
         case .favorites:
-            ContentUnavailableView("No Favorites", systemImage: "star", description: Text("Right-click a game and choose Add to Favorites."))
+            ContentUnavailableView {
+                Label { Text("No Favorites") } icon: { SymbolTile(symbol: filter.symbol, tint: filter.tint, size: 64) }
+            } description: {
+                Text("Right-click a game and choose Add to Favorites.")
+            }
         case .recent:
-            ContentUnavailableView("Nothing Played Yet", systemImage: "clock", description: Text("Games you launch show up here."))
+            ContentUnavailableView {
+                Label { Text("Nothing Played Yet") } icon: { SymbolTile(symbol: filter.symbol, tint: filter.tint, size: 64) }
+            } description: {
+                Text("Games you launch show up here.")
+            }
         default:
             ContentUnavailableView.search(text: navigation.searchText)
         }
@@ -141,10 +254,13 @@ struct FeaturedGameBanner: View {
                 .rotationEffect(.degrees(hovering ? -2 : 0))
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(state.isRunning ? "NOW PLAYING" : "CONTINUE PLAYING")
-                    .font(.caption.weight(.heavy))
-                    .tracking(1.6)
-                    .foregroundStyle(.white.opacity(0.75))
+                HStack(spacing: 7) {
+                    if state.isRunning { PixelInvader(pixel: 1, color: .white) }
+                    Text(state.isRunning ? "NOW PLAYING" : "CONTINUE PLAYING")
+                        .font(.system(.caption, design: .monospaced).weight(.heavy))
+                        .tracking(1.2)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
                 Text(game.name)
                     .font(.system(size: 34, weight: .heavy))
                     .foregroundStyle(.white)
@@ -222,7 +338,7 @@ struct PlayControl: View {
                 .buttonStyle(PlayButtonStyle(tint: .red))
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
                 HStack(spacing: 7) {
-                    PulsingDot(color: .green, size: 7)
+                    PixelInvader(pixel: 1)
                     Text(since, style: .timer).monospacedDigit()
                 }
                 .font(.callout.weight(.medium))
@@ -242,6 +358,7 @@ struct GameCard: View {
     @Environment(GameLibrary.self) private var library
     @Environment(AppNavigation.self) private var navigation
     let game: Game
+    var showsPlaytime = false
     @State private var isHovering = false
     @State private var playBounce = 0
 
@@ -310,11 +427,12 @@ struct GameCard: View {
                     switch state {
                     case .running:
                         HStack(spacing: 5) {
-                            PulsingDot(size: 6)
+                            PixelInvader(pixel: 1)
                             Text("Playing now").foregroundStyle(.green)
                         }
                     case .preparing(let message): Text(message)
-                    case .idle: Text(game.executablePath.isEmpty ? "Needs an executable" : Format.relative(game.lastPlayedAt))
+                    case .idle where game.executablePath.isEmpty: Text("Needs an executable")
+                    case .idle: Text(showsPlaytime ? Format.playtime(game.totalPlaytime) : Format.relative(game.lastPlayedAt))
                     }
                 }
                 .font(.caption)

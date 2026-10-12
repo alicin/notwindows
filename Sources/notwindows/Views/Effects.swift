@@ -14,6 +14,7 @@ struct IconPalette: Equatable {
         secondary: Color(red: 0.12, green: 0.08, blue: 0.30),
         glow: Color(red: 0.85, green: 0.35, blue: 0.6)
     )
+
 }
 
 extension NSImage {
@@ -87,10 +88,15 @@ struct ArtworkBackground: View {
         ZStack {
             LinearGradient(colors: [colors.primary, colors.secondary], startPoint: .topLeading, endPoint: .bottomTrailing)
             if let backdrop {
-                Image(nsImage: backdrop)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
+                // Sized by the container, not the square image, so wide backdrops don't grow past their view.
+                Color.clear
+                    .overlay {
+                        Image(nsImage: backdrop)
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fill)
+                    }
+                    .clipped()
                     .opacity(0.7)
                     .blendMode(.softLight)
             }
@@ -184,26 +190,73 @@ struct RunningGlow: View {
     }
 }
 
-/// Small pulsing status dot.
-struct PulsingDot: View {
-    var color: Color = .green
-    var size: CGFloat = 8
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animate = false
+/// A gradient tile with a white symbol, like the icons of Reminders' smart lists.
+struct SymbolTile: View {
+    let symbol: String
+    let tint: Color
+    var size: CGFloat = 22
+    var bounce = 0
 
     var body: some View {
-        Circle()
-            .fill(color)
+        let shape = RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+        shape
+            .fill(LinearGradient(colors: [tint.mix(with: .white, amount: 0.18), tint], startPoint: .top, endPoint: .bottom))
+            .overlay {
+                Image(systemName: symbol)
+                    .font(.system(size: size * 0.5, weight: .bold))
+                    .foregroundStyle(.white)
+                    .symbolEffect(.bounce, value: bounce)
+            }
+            .overlay(shape.strokeBorder(.white.opacity(0.2), lineWidth: 0.5))
             .frame(width: size, height: size)
-            .background {
-                Circle()
-                    .fill(color.opacity(0.5))
-                    .scaleEffect(animate && !reduceMotion ? 2.4 : 1)
-                    .opacity(animate && !reduceMotion ? 0 : 0.8)
+            .shadow(color: tint.opacity(0.35), radius: size * 0.09, y: size * 0.045)
+    }
+}
+
+/// The arcade crab invader, flapping between its two frames and shuffling sideways like the original.
+struct PixelInvader: View {
+    /// Points per sprite pixel; whole multiples of 0.5 keep the edges crisp on Retina displays.
+    var pixel: CGFloat = 1.5
+    var color: Color = .green
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let frames = [
+        ["..X.....X..",
+         "...X...X...",
+         "..XXXXXXX..",
+         ".XX.XXX.XX.",
+         "XXXXXXXXXXX",
+         "X.XXXXXXX.X",
+         "X.X.....X.X",
+         "...XX.XX..."],
+        ["..X.....X..",
+         "X..X...X..X",
+         "X.XXXXXXX.X",
+         "XXX.XXX.XXX",
+         "XXXXXXXXXXX",
+         ".XXXXXXXXX.",
+         "..X.....X..",
+         ".X.......X."],
+    ]
+    private static let march: [CGFloat] = [0, 1, 2, 1]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.4, paused: reduceMotion)) { context in
+            let step = reduceMotion ? 0 : Int(context.date.timeIntervalSinceReferenceDate / 0.4)
+            Canvas { context, _ in
+                var path = Path()
+                for (y, row) in Self.frames[step % 2].enumerated() {
+                    for (x, cell) in row.enumerated() where cell == "X" {
+                        path.addRect(CGRect(x: CGFloat(x) * pixel, y: CGFloat(y) * pixel, width: pixel, height: pixel))
+                    }
+                }
+                context.fill(path, with: .color(color))
             }
-            .onAppear {
-                withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { animate = true }
-            }
+            .frame(width: 11 * pixel, height: 8 * pixel)
+            .offset(x: Self.march[step % 4] * pixel)
+            .frame(width: 13 * pixel, alignment: .leading)
+        }
+        .shadow(color: color.opacity(0.7), radius: pixel * 2)
     }
 }
 
