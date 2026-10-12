@@ -413,6 +413,18 @@ struct GameSettingsPage: View {
         DLLOverridesCard(gameID: gameID)
         EnvironmentCard(gameID: gameID)
 
+        SettingsCard(title: "Share settings", symbol: "square.and.arrow.up.fill", tint: .blue, subtitle: "Pass this setup on to someone else",
+                     footer: "A settings file carries the renderer, sync, display, input and system settings, launch arguments, the engine and the Winetricks components installed here. Paths and play history stay on this Mac.") {
+        } content: {
+            SettingRow(title: "Export settings", detail: "Saves a .notwindows file anyone can import.") {
+                Button("Export…") { SettingsTransfer.export(game, library: library) }
+            }
+            RowDivider()
+            SettingRow(title: "Import settings", detail: "Replaces these settings with the ones in a file.") {
+                Button("Import…") { SettingsTransfer.chooseAndImport(into: game, library: library) }
+            }
+        }
+
         SettingsCard(title: "Danger zone", symbol: "exclamationmark.triangle.fill", tint: .red) {
         } content: {
             if game.externalPrefixPath == nil {

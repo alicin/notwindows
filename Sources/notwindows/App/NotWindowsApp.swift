@@ -37,6 +37,8 @@ final class AppNavigation {
                 }
             case "exe", "msi", "bat", "lnk", "com":
                 selection = .game(library.addGame(executable: url).id)
+            case SharedSettings.fileExtension:
+                SettingsTransfer.open(url, library: library, navigation: self)
             default:
                 continue
             }
@@ -148,6 +150,11 @@ struct NotWindowsCommands: Commands {
                 }
             }
             .disabled(selectedID == nil)
+            Divider()
+            Button("Export Settings…") { if let game = library.game(selectedID) { SettingsTransfer.export(game, library: library) } }
+                .disabled(selectedID == nil)
+            Button("Import Settings…") { if let game = library.game(selectedID) { SettingsTransfer.chooseAndImport(into: game, library: library) } }
+                .disabled(selectedID == nil)
             Divider()
             Button("Stop All Games") { library.stopAll() }
                 .keyboardShortcut(".", modifiers: [.command, .shift])

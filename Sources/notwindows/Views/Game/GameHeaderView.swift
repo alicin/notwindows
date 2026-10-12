@@ -85,6 +85,12 @@ struct GameHeaderView: View {
                             }
                         }
                         Section {
+                            Button("Export Settings…", systemImage: "square.and.arrow.up") { SettingsTransfer.export(game, library: library) }
+                            Button("Import Settings…", systemImage: "square.and.arrow.down") {
+                                SettingsTransfer.chooseAndImport(into: game, library: library)
+                            }
+                        }
+                        Section {
                             Button("Open C: Drive", systemImage: "folder") { NSWorkspace.shared.open(game.driveC) }
                             Button("Show Last Log", systemImage: "doc.text.magnifyingglass", action: showLog)
                             Button("Force Quit All Processes", systemImage: "xmark.octagon") { library.stop(game.id) }

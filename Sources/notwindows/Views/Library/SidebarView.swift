@@ -336,6 +336,7 @@ struct GameContextMenu: View {
             library.update(game.id) { $0.isFavorite.toggle() }
         }
         Button("Open C: Drive", systemImage: "folder") { NSWorkspace.shared.open(game.driveC) }
+        Button("Export Settings…", systemImage: "square.and.arrow.up") { SettingsTransfer.export(game, library: library) }
         if let exe = game.executableURL {
             Button("Show Executable in Finder", systemImage: "magnifyingglass") {
                 NSWorkspace.shared.activateFileViewerSelecting([exe])
