@@ -1,6 +1,6 @@
 import AppKit
 
-// Renders Resources/AppIcon.icns: a gradient squircle with a wine glass and a controller.
+// Renders Resources/AppIcon.icns: a gradient squircle with a game controller.
 let out = URL(fileURLWithPath: CommandLine.arguments[1])
 let iconset = out.deletingPathExtension().appendingPathExtension("iconset")
 try? FileManager.default.removeItem(at: iconset)
@@ -46,8 +46,7 @@ func render(_ size: Int) -> Data {
         let r = NSRect(x: center.x - image.size.width / 2, y: center.y - image.size.height / 2, width: image.size.width, height: image.size.height)
         image.draw(in: r)
     }
-    symbol("wineglass.fill", pointSize: s * 0.36, at: NSPoint(x: rect.midX, y: rect.midY + s * 0.06), alpha: 0.96)
-    symbol("gamecontroller.fill", pointSize: s * 0.14, at: NSPoint(x: rect.midX, y: rect.minY + s * 0.15), alpha: 0.75)
+    symbol("gamecontroller.fill", pointSize: s * 0.33, at: NSPoint(x: rect.midX, y: rect.midY), alpha: 0.96)
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!

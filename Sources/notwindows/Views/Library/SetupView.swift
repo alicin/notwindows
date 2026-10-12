@@ -10,7 +10,7 @@ struct SetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 16) {
-                Image(systemName: "wineglass.fill")
+                Image(systemName: "gamecontroller.fill")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 54, height: 54)
