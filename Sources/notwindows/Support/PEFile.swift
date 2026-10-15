@@ -4,9 +4,22 @@ import Foundation
 struct PEFile {
     enum Machine { case i386, amd64, arm64, other(UInt16) }
 
+    struct Section {
+        let name: String
+        let virtualAddress: UInt32
+        let virtualSize: UInt32
+        let rawOffset: UInt32
+        let rawSize: UInt32
+        let characteristics: UInt32
+
+        var isExecutable: Bool { characteristics & 0x2000_0000 != 0 }
+    }
+
     let data: Data
     let machine: Machine
-    private let sections: [(va: UInt32, size: UInt32, raw: UInt32)]
+    let sections: [Section]
+    /// The major version of the linker that built the file: 9 is Visual C++ 2008, 14 is 2015 and later.
+    let linkerVersion: UInt8
     private let directories: Int
 
     init?(url: URL) {
@@ -30,19 +43,21 @@ struct PEFile {
         }
 
         let optional = peOffset + 24
+        linkerVersion = r.slice(optional + 2, 1)?.first ?? 0
         switch r.u16(optional) {
         case 0x10B: directories = optional + 96
         case 0x20B: directories = optional + 112
         default: return nil
         }
 
-        var sections: [(UInt32, UInt32, UInt32)] = []
+        var sections: [Section] = []
         let table = optional + optionalSize
         for i in 0..<sectionCount {
             let base = table + i * 40
-            guard let vsize = r.u32(base + 8), let va = r.u32(base + 12),
-                  let rawSize = r.u32(base + 16), let raw = r.u32(base + 20) else { return nil }
-            sections.append((va, max(vsize, rawSize), raw))
+            guard let nameBytes = r.slice(base, 8), let vsize = r.u32(base + 8), let va = r.u32(base + 12),
+                  let rawSize = r.u32(base + 16), let raw = r.u32(base + 20), let flags = r.u32(base + 36) else { return nil }
+            let name = String(decoding: nameBytes.prefix { $0 != 0 }, as: UTF8.self)
+            sections.append(Section(name: name, virtualAddress: va, virtualSize: vsize, rawOffset: raw, rawSize: rawSize, characteristics: flags))
         }
         self.sections = sections
     }
@@ -57,10 +72,18 @@ struct PEFile {
     var reader: Reader { Reader(data: data) }
 
     func offset(ofRVA rva: UInt32) -> Int? {
-        for s in sections where rva >= s.va && rva < s.va &+ s.size {
-            return Int(s.raw) + Int(rva - s.va)
+        for s in sections where rva >= s.virtualAddress && rva < s.virtualAddress &+ max(s.virtualSize, s.rawSize) {
+            return Int(s.rawOffset) + Int(rva - s.virtualAddress)
         }
         return nil
+    }
+
+    /// The bytes a section has in the file. Sections are padded on disk, so a smaller virtual size wins.
+    func contents(of section: Section) -> Data {
+        let length = section.virtualSize == 0 ? section.rawSize : min(section.virtualSize, section.rawSize)
+        let start = min(Int(section.rawOffset), data.count)
+        let end = min(start + Int(length), data.count)
+        return data[(data.startIndex + start)..<(data.startIndex + end)]
     }
 
     func directory(_ index: Int) -> (rva: UInt32, size: UInt32)? {

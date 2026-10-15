@@ -181,7 +181,7 @@ struct GameHeaderView: View {
         if let report {
             items.append(HeaderTag(text: report.is64Bit ? "64-bit" : "32-bit", symbol: "cpu"))
             if let api = report.graphicsAPI { items.append(HeaderTag(text: api.title, symbol: "cube")) }
-            if let engine = report.engine { items.append(HeaderTag(text: engine.rawValue, symbol: "hammer.fill")) }
+            if let engine = report.engineLabel { items.append(HeaderTag(text: engine, symbol: "hammer.fill")) }
             if report.isDotNet { items.append(HeaderTag(text: ".NET")) }
         }
         if game.isSteamGame || game.isSteamLauncher {

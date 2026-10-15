@@ -2,7 +2,10 @@ import Foundation
 
 /// What a static look at a game's executable and folder tells us.
 struct ExecutableReport: Equatable {
-    enum GameEngine: String { case unity = "Unity", unreal = "Unreal Engine", source = "Source", gameMaker = "GameMaker", renPy = "Ren'Py", rpgMaker = "RPG Maker" }
+    enum GameEngine: String, CaseIterable {
+        case unity = "Unity", unreal = "Unreal Engine", source = "Source", gameMaker = "GameMaker", renPy = "Ren'Py", rpgMaker = "RPG Maker"
+        case gamebryo = "Gamebryo", creation = "Creation Engine", renderWare = "RenderWare", idTech = "id Tech", cryEngine = "CryEngine"
+    }
 
     var is64Bit = false
     var imports: Set<String> = []
@@ -10,8 +13,21 @@ struct ExecutableReport: Equatable {
     var productName: String?
     var companyName: String?
     var engine: GameEngine?
+    /// The engine's version or flavour, e.g. "4" for Unreal Engine 4 or "2021.3 · IL2CPP" for Unity.
+    var engineDetail: String?
     var antiCheat: [String] = []
     var hasSteamAPI = false
+    /// Only measured for 32-bit executables.
+    var x87: X87Usage?
+    /// Wrapped in SteamStub DRM, which only lets the game start while Steam is running and signed in.
+    var hasSteamStub = false
+    /// When the executable is a launcher, the game executable next to it.
+    var launcherTarget: String?
+
+    var engineLabel: String? {
+        guard let engine else { return nil }
+        return [engine.rawValue, engineDetail].compactMap { $0 }.joined(separator: " ")
+    }
 
     var directXLabel: String? {
         if imports.contains("d3d12.dll") { return "DirectX 12" }
@@ -26,6 +42,11 @@ struct ExecutableReport: Equatable {
     }
 
     func imports(prefix: String) -> [String] { imports.filter { $0.hasPrefix(prefix) }.sorted() }
+}
+
+/// What deciding whether an action is already in place needs to know beyond the game itself.
+struct CompatState {
+    var installedVerbs: Set<String> = []
 }
 
 /// A single change notwindows can make to a game.
@@ -43,6 +64,9 @@ enum CompatAction: Hashable {
     case argument(String)
     case winetricks(String)
     case rename(String)
+    case rosettaX87(Bool)
+    /// A path relative to the game's install folder.
+    case executable(String)
 
     /// Short "what changes" label for the review sheet.
     var title: String {
@@ -60,26 +84,33 @@ enum CompatAction: Hashable {
         case .argument(let arg): "Launch argument \(arg)"
         case .winetricks(let verb): "Install \(verb) (winetricks)"
         case .rename(let name): "Rename to “\(name)”"
+        case .rosettaX87(let on): "rosettax87 \(on ? "on" : "off")"
+        case .executable(let path): "Start \(Self.fileName(path))"
         }
+    }
+
+    static func fileName(_ path: String) -> String {
+        path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
     }
 
     var symbol: String {
         switch self {
         case .renderer, .direct3D9, .cncDDraw: "display"
-        case .wineRosetta, .esync, .msync: "gauge.with.dots.needle.67percent"
+        case .wineRosetta, .esync, .msync, .rosettaX87: "gauge.with.dots.needle.67percent"
         case .windowsVersion, .keepMono: "macwindow"
         case .dllOverride: "puzzlepiece.extension"
         case .environment: "terminal"
         case .argument: "text.cursor"
         case .winetricks: "wand.and.stars"
         case .rename: "character.cursor.ibeam"
+        case .executable: "play.rectangle"
         }
     }
 
     var needsInstall: Bool { if case .winetricks = self { true } else { false } }
 
     /// True when the game's current settings already match.
-    func isSatisfied(by game: Game, installedVerbs: Set<String>) -> Bool {
+    func isSatisfied(by game: Game, state: CompatState) -> Bool {
         let s = game.settings
         switch self {
         case .renderer(let b): return s.direct3DBackend == b
@@ -97,9 +128,14 @@ enum CompatAction: Hashable {
         case .argument(let arg):
             return CommandLineSplitter.split(game.arguments).contains(arg)
         case .winetricks(let verb):
-            return installedVerbs.contains(verb)
+            return state.installedVerbs.contains(verb)
         case .rename(let name):
             return game.name == name
+        case .rosettaX87(let on):
+            return s.rosettaX87 == on
+        case .executable(let path):
+            guard let current = game.executableURL, let target = game.installFile(path) else { return false }
+            return current.standardizedFileURL.path.lowercased() == target.standardizedFileURL.path.lowercased()
         }
     }
 
@@ -126,6 +162,14 @@ enum CompatAction: Hashable {
             break
         case .rename(let name):
             game.name = name
+        case .rosettaX87(let on):
+            game.settings.rosettaX87 = on
+        case .executable(let path):
+            guard let target = game.installFile(path) else { return }
+            game.executablePath = target.path
+            game.workingDirectory = nil
+            // Registry settings may be scoped to the executable's name, so write them again for the new one.
+            game.appliedRegistryFingerprint = nil
         }
     }
 }
@@ -156,10 +200,14 @@ struct CompatSuggestion: Identifiable, Hashable {
     var id: String { "\(source)-\(action)" }
 }
 
-/// Something from a fix that notwindows can't translate (registry edits, file patches, Linux-only tweaks).
+/// Something worth knowing that isn't a setting: a fix notwindows can't translate (registry edits, file patches,
+/// Linux-only tweaks), or information about the game.
 struct CompatNote: Identifiable, Hashable {
+    enum Kind { case untranslated, info }
+
     let text: String
     let source: CompatSource
+    var kind = Kind.untranslated
     var id: String { "\(source)-\(text)" }
 }
 
@@ -204,6 +252,8 @@ struct CompatReport {
         case .dllOverride(let name, _): "dll-\(name.lowercased())"
         case .environment(let key, _): "env-\(key)"
         case .rename: "rename"
+        case .rosettaX87: "x87"
+        case .executable: "executable"
         default: nil
         }
     }

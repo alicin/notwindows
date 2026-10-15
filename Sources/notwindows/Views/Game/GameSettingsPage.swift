@@ -545,8 +545,8 @@ extension GameLibrary {
     /// Recommended Smart Setup changes the game doesn't have yet.
     func pendingSuggestionCount(_ id: UUID) -> Int {
         guard let report = compatReports[id], let game = game(id) else { return 0 }
-        let installed = installedWinetricksVerbs(id)
-        return report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, installedVerbs: installed) }.count
+        let state = compatState(id)
+        return report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) }.count
     }
 }
 

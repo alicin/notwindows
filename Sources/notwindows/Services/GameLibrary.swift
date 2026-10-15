@@ -272,6 +272,10 @@ final class GameLibrary {
         return Set(WinetricksCatalog.installedVerbs(in: prefix))
     }
 
+    func compatState(_ id: UUID) -> CompatState {
+        CompatState(installedVerbs: installedWinetricksVerbs(id))
+    }
+
     func analyzeCompatibility(_ id: UUID, match: CompatMatch? = nil, autoApply: Bool = false) async {
         guard let game = game(id), !compatLoading.contains(id) else { return }
         compatLoading.insert(id)
@@ -282,12 +286,14 @@ final class GameLibrary {
             knownWinetricksVerbs = Set(WinetricksCatalog.parse(text).map(\.name))
         }
         let steamMatch = game.steamAppID.map { CompatMatch(title: game.name, steamAppID: $0, umuID: nil, store: "steam") }
-        let report = await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match ?? steamMatch)
+        let engine = engines.engine(named: launcher(of: game)?.engineName ?? game.engineName)
+        let report = await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match ?? steamMatch,
+                                                 supportsRosettaX87: engine?.capabilities.rosettaX87 ?? true)
         compatReports[id] = report
         guard autoApply else { return }
 
-        let installed = installedWinetricksVerbs(id)
-        let pending = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: self.game(id) ?? game, installedVerbs: installed) }
+        let state = compatState(id)
+        let pending = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: self.game(id) ?? game, state: state) }
         let settings = pending.filter { !$0.action.needsInstall }
         let installs = pending.filter { $0.action.needsInstall }
         if !settings.isEmpty { applyCompat(settings, to: id) }

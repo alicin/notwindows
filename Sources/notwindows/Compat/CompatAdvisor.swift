@@ -15,7 +15,7 @@ enum CompatAdvisor {
         return titles.filter { !$0.isEmpty && seen.insert(TitleMatcher.tokens($0).joined(separator: " ")).inserted }
     }
 
-    static func analyze(game: Game, knownVerbs: Set<String>, preferredMatch: CompatMatch? = nil) async -> CompatReport {
+    static func analyze(game: Game, knownVerbs: Set<String>, preferredMatch: CompatMatch? = nil, supportsRosettaX87: Bool = true) async -> CompatReport {
         var report = CompatReport()
         guard let executable = game.executableURL, executable.exists else {
             report.errors.append("The game doesn't have an executable yet.")
@@ -24,8 +24,11 @@ enum CompatAdvisor {
 
         let exe = await Task.detached(priority: .userInitiated) { ExecutableAnalyzer.analyze(executable) }.value
         report.executable = exe
+        let context = MacRules.Context(installFolder: game.installFolder, prefix: game.prefixURL,
+                                       supportsRosettaX87: supportsRosettaX87, isSteamGame: game.isSteamGame)
         report.warnings = MacRules.warnings(for: exe)
-        let local = MacRules.suggestions(for: exe, executable: executable)
+        report.notes = MacRules.notes(for: exe, context: context)
+        let local = MacRules.suggestions(for: exe, executable: executable, context: context)
 
         // The Steam client itself isn't a game to look up; its games are matched by app ID instead.
         if executable.lastPathComponent.lowercased() == "steam.exe" {

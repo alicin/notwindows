@@ -79,6 +79,22 @@ struct Game: Codable, Identifiable, Hashable {
     }
     var executableURL: URL? { executablePath.isEmpty ? nil : URL(fileURLWithPath: executablePath) }
 
+    /// Steam's install folder for the game, or else the executable's folder.
+    var installFolder: URL? {
+        installDirectory.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? executableURL?.deletingLastPathComponent()
+    }
+
+    /// An existing file in the install folder, matching each part of `path` (either slash) regardless of case.
+    func installFile(_ path: String) -> URL? {
+        guard var url = installFolder else { return nil }
+        for part in path.split(whereSeparator: { $0 == "/" || $0 == "\\" }) {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
+            guard let name = names.first(where: { $0.caseInsensitiveCompare(String(part)) == .orderedSame }) else { return nil }
+            url.appendPathComponent(name)
+        }
+        return url
+    }
+
     var resolvedWorkingDirectory: URL? {
         if let workingDirectory, !workingDirectory.isEmpty {
             return URL(fileURLWithPath: workingDirectory, isDirectory: true)

@@ -12,7 +12,7 @@ struct CompatSheet: View {
     private var game: Game? { library.game(gameID) }
     private var report: CompatReport? { library.compatReports[gameID] }
     private var isLoading: Bool { library.compatLoading.contains(gameID) }
-    private var installed: Set<String> { library.installedWinetricksVerbs(gameID) }
+    private var state: CompatState { library.compatState(gameID) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -87,7 +87,11 @@ struct CompatSheet: View {
         if let exe = report.executable {
             chips.append(Chip(text: exe.is64Bit ? "64-bit" : "32-bit", symbol: "cpu"))
             if let dx = exe.directXLabel { chips.append(Chip(text: dx, symbol: "cube.transparent")) }
-            if let engine = exe.engine { chips.append(Chip(text: engine.rawValue, symbol: "gearshape.2")) }
+            if let engine = exe.engineLabel { chips.append(Chip(text: engine, symbol: "gearshape.2")) }
+            if let x87 = exe.x87, x87.level == .heavy || x87.level == .moderate {
+                chips.append(Chip(text: "x87 math", symbol: "function"))
+            }
+            if exe.hasSteamStub { chips.append(Chip(text: "Steam DRM", symbol: "lock")) }
             if exe.isDotNet { chips.append(Chip(text: ".NET", symbol: "curlybraces")) }
             if exe.hasSteamAPI { chips.append(Chip(text: "Steamworks", symbol: "cloud")) }
             for name in exe.antiCheat { chips.append(Chip(text: name, symbol: "exclamationmark.shield", tint: .red)) }
@@ -132,7 +136,7 @@ struct CompatSheet: View {
                     ForEach(groups[source] ?? []) { suggestion in
                         SuggestionRow(
                             suggestion: suggestion,
-                            isSatisfied: game.map { suggestion.action.isSatisfied(by: $0, installedVerbs: installed) } ?? false,
+                            isSatisfied: game.map { suggestion.action.isSatisfied(by: $0, state: state) } ?? false,
                             isOn: Binding(get: { selected.contains(suggestion.id) },
                                           set: { if $0 { selected.insert(suggestion.id) } else { selected.remove(suggestion.id) } })
                         )
@@ -146,10 +150,27 @@ struct CompatSheet: View {
                     }
                 }
             }
-            if !report.notes.isEmpty {
+            let info = report.notes.filter { $0.kind == .info }
+            if !info.isEmpty {
+                Section("Good to know") {
+                    ForEach(info) { note in
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(note.text).textSelection(.enabled)
+                                Text(sourceTitle(note.source, report: report)).font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "info.circle").foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+            let untranslated = report.notes.filter { $0.kind == .untranslated }
+            if !untranslated.isEmpty {
                 Section {
-                    DisclosureGroup("\(report.notes.count) part\(report.notes.count == 1 ? "" : "s") of the fix can't be applied on macOS") {
-                        ForEach(report.notes) { note in
+                    DisclosureGroup("\(untranslated.count) part\(untranslated.count == 1 ? "" : "s") of the fix can't be applied on macOS") {
+                        ForEach(untranslated) { note in
                             Text(note.text).font(.callout.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                         }
                     }
@@ -194,7 +215,7 @@ struct CompatSheet: View {
 
     private func seedSelection() {
         guard let report, let game else { return }
-        selected = Set(report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, installedVerbs: installed) }.map(\.id))
+        selected = Set(report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) }.map(\.id))
     }
 }
 

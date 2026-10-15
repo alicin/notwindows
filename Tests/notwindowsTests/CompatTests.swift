@@ -125,12 +125,12 @@ struct CompatActionTests {
             .renderer(.d3dmetal), .dllOverride(name: "dinput8", mode: .nativeThenBuiltin),
             .environment(key: "FOO", value: "1"), .argument("-windowed"), .esync(false),
         ]
-        for action in actions { #expect(!action.isSatisfied(by: game, installedVerbs: [])) }
+        for action in actions { #expect(!action.isSatisfied(by: game, state: CompatState())) }
         for action in actions { action.apply(to: &game) }
-        for action in actions { let satisfied = action.isSatisfied(by: game, installedVerbs: []); #expect(satisfied) }
+        for action in actions { let satisfied = action.isSatisfied(by: game, state: CompatState()); #expect(satisfied) }
         CompatAction.argument("-windowed").apply(to: &game)
         #expect(game.arguments == "-windowed -windowed")
-        #expect(CompatAction.winetricks("vcrun2022").isSatisfied(by: game, installedVerbs: ["vcrun2022"]))
+        #expect(CompatAction.winetricks("vcrun2022").isSatisfied(by: game, state: CompatState(installedVerbs: ["vcrun2022"])))
     }
 
     @Test func deduplicatesConflicts() {
