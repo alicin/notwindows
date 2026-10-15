@@ -292,6 +292,8 @@ enum CompatSource: Hashable {
     case steamAppInfo
     case pcGamingWiki(String)
     case appleGamingWiki(String)
+    /// What the game's last log showed.
+    case lastRun
 
     var title: String {
         switch self {
@@ -303,6 +305,7 @@ enum CompatSource: Hashable {
         case .steamAppInfo: "Steam's launch options"
         case .pcGamingWiki(let page): "PCGamingWiki: \(page)"
         case .appleGamingWiki(let page): "AppleGamingWiki: \(page)"
+        case .lastRun: "From the last run's log"
         }
     }
 }

@@ -15,6 +15,8 @@ struct CompatSheet: View {
 
     private var game: Game? { library.game(gameID) }
     private var report: CompatReport? { library.compatReports[gameID] }
+    /// Smart Setup's suggestions with the last run's first.
+    private var suggestions: [CompatSuggestion] { library.suggestions(for: gameID) }
     private var isLoading: Bool { library.compatLoading.contains(gameID) }
     private var state: CompatState { library.compatState(gameID) }
 
@@ -44,7 +46,7 @@ struct CompatSheet: View {
         .task {
             if report == nil { await library.analyzeCompatibility(gameID) }
         }
-        .onChange(of: report?.suggestions.map(\.id), initial: true) { _, _ in seedSelection() }
+        .onChange(of: suggestions.map(\.id), initial: true) { _, _ in seedSelection() }
     }
 
     private var header: some View {
@@ -123,8 +125,9 @@ struct CompatSheet: View {
 
     @ViewBuilder
     private func content(_ report: CompatReport) -> some View {
-        let groups = Dictionary(grouping: report.suggestions, by: \.source)
-        let order: [CompatSource] = report.suggestions.map(\.source).reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
+        let suggestions = suggestions
+        let groups = Dictionary(grouping: suggestions, by: \.source)
+        let order: [CompatSource] = suggestions.map(\.source).reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
         ScrollViewReader { proxy in
             List {
                 ForEach(report.warnings, id: \.self) { warning in
@@ -132,7 +135,8 @@ struct CompatSheet: View {
                         .foregroundStyle(.orange)
                         .listRowSeparator(.hidden)
                 }
-                if report.suggestions.isEmpty {
+                lastRun
+                if suggestions.isEmpty {
                     ContentUnavailableView("Nothing to change", systemImage: "checkmark.seal",
                                            description: Text("No fixes are known for this game and the defaults already fit what the executable uses."))
                 }
@@ -202,6 +206,27 @@ struct CompatSheet: View {
         }
     }
 
+    /// How the last session went and what its log showed.
+    @ViewBuilder
+    private var lastRun: some View {
+        let notes = library.lastRunReports[gameID]?.notes ?? []
+        if let session = game?.lastSession, session.isQuickCrash || !notes.isEmpty {
+            Section("Last run") {
+                Label {
+                    Text(session.isQuickCrash ? "Quit \(Int(session.duration.rounded())) seconds after starting, with exit code \(session.exitCode ?? 0)."
+                                              : "Ran for \(Format.playtime(session.duration).lowercased()) on \(session.start.formatted(date: .abbreviated, time: .shortened)).")
+                } icon: {
+                    Image(systemName: session.isQuickCrash ? "exclamationmark.triangle.fill" : "clock").foregroundStyle(session.isQuickCrash ? .orange : .secondary)
+                }
+                ForEach(notes) { note in
+                    Label(note.text, systemImage: "text.magnifyingglass")
+                        .textSelection(.enabled)
+                        .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func installButton(_ choice: EngineChoice, for suggestion: CompatSuggestion) -> some View {
         if installingEngines.contains(choice) {
@@ -236,7 +261,7 @@ struct CompatSheet: View {
 
     private var footer: some View {
         let state = state
-        let actionable = report?.suggestions.filter { selected.contains($0.id) && $0.action.isAvailable(state: state) } ?? []
+        let actionable = report == nil ? [] : suggestions.filter { selected.contains($0.id) && $0.action.isAvailable(state: state) }
         let installs = actionable.filter(\.action.needsInstall).count
         return HStack {
             Text("Sources: the game's executable, Steam, [Mac rules](https://github.com/alicin/notwindows/blob/main/Resources/mac-rules.json), [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net), [ProtonDB](https://www.protondb.com), [PCGamingWiki](https://www.pcgamingwiki.com) and [AppleGamingWiki](https://www.applegamingwiki.com).")
@@ -261,7 +286,7 @@ struct CompatSheet: View {
     private func seedSelection() {
         guard let report, let game else { return }
         let state = state
-        selected = Set(report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) && $0.action.isAvailable(state: state) }.map(\.id))
+        selected = Set(suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) && $0.action.isAvailable(state: state) }.map(\.id))
     }
 }
 

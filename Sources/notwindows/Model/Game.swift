@@ -22,6 +22,8 @@ struct Game: Codable, Identifiable, Hashable {
     var launcherID: UUID?
     var steamAppID: Int?
     var installDirectory: String?
+    var lastSession: PlaySession?
+    var knownGood: KnownGoodSetup?
 
     init(name: String, executablePath: String = "", settings: GameSettings = GameSettings()) {
         self.name = name
@@ -48,7 +50,12 @@ struct Game: Codable, Identifiable, Hashable {
         launcherID = try c.decodeIfPresent(UUID.self, forKey: .launcherID)
         steamAppID = try c.decodeIfPresent(Int.self, forKey: .steamAppID)
         installDirectory = try c.decodeIfPresent(String.self, forKey: .installDirectory)
+        lastSession = try? c.decodeIfPresent(PlaySession.self, forKey: .lastSession)
+        knownGood = try? c.decodeIfPresent(KnownGoodSetup.self, forKey: .knownGood)
     }
+
+    /// Whether the game runs the way it did in its last known good session.
+    var isKnownGood: Bool { knownGood.map { $0.matches(self) } ?? false }
 
     var directory: URL { Paths.games.appendingPathComponent(id.uuidString, isDirectory: true) }
     var manifestURL: URL { directory.appendingPathComponent("game.json") }
@@ -137,5 +144,69 @@ struct Game: Codable, Identifiable, Hashable {
             return "C:" + executablePath.dropFirst(drive.count).replacingOccurrences(of: "/", with: "\\")
         }
         return (executablePath as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+struct PlaySession: Codable, Hashable {
+    /// Under this, a run that ended in an error counts as a crash at startup.
+    static let quickCrashLimit: TimeInterval = 15
+    /// A session this long means the setup works.
+    static let knownGoodAfter: TimeInterval = 300
+
+    var start: Date
+    var duration: TimeInterval
+    var exitCode: Int32?
+    /// Ended with notwindows' Stop button.
+    var wasStopped = false
+
+    var isQuickCrash: Bool { !wasStopped && duration < Self.quickCrashLimit && (exitCode ?? 0) != 0 }
+    var isLong: Bool { duration >= Self.knownGoodAfter }
+}
+
+/// The settings a game had in a long session, to tell whether it still runs that way and to go back to them.
+struct KnownGoodSetup: Codable, Hashable {
+    var date: Date
+    var duration: TimeInterval
+    var settings: GameSettings
+    var engineName: String?
+    var executablePath: String
+    var arguments: String
+
+    init(game: Game, session: PlaySession) {
+        date = session.start
+        duration = session.duration
+        settings = game.settings
+        engineName = game.engineName
+        executablePath = game.executablePath
+        arguments = game.arguments
+    }
+
+    func matches(_ game: Game) -> Bool {
+        settings.comparable == game.settings.comparable && engineName == game.engineName
+            && executablePath == game.executablePath && arguments == game.arguments
+    }
+
+    func restore(to game: inout Game) {
+        game.settings = settings
+        game.engineName = engineName
+        game.executablePath = executablePath
+        game.arguments = arguments
+        game.appliedRegistryFingerprint = nil
+    }
+}
+
+extension GameSettings {
+    /// The settings without the identifiers of their list items and the state of .ini edits, which change without
+    /// changing how the game runs.
+    var comparable: GameSettings {
+        var copy = self
+        let id = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        for i in copy.dllOverrides.indices { copy.dllOverrides[i].id = id }
+        for i in copy.environment.indices { copy.environment[i].id = id }
+        for i in copy.iniEdits.indices {
+            copy.iniEdits[i].id = id
+            copy.iniEdits[i].isPending = false
+        }
+        return copy
     }
 }

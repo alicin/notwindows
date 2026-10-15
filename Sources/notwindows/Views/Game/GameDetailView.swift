@@ -120,6 +120,9 @@ struct GameDetailView: View {
                 guard let url = game.executableURL else { report = nil; return }
                 report = await Task.detached(priority: .utility) { PEFile(url: url) == nil ? nil : ExecutableAnalyzer.analyze(url) }.value
             }
+            .task(id: game.lastSession?.start) {
+                if library.lastRunReports[gameID] == nil, game.lastLogURL.exists { await library.diagnoseLastRun(gameID) }
+            }
             .sheet(isPresented: $showingWinetricks) { WinetricksSheet(gameID: gameID) }
             .sheet(isPresented: $showingLog) { LogSheet(game: game) }
             .sheet(isPresented: Binding(get: { library.compatSheetGameID == gameID },
@@ -156,7 +159,7 @@ struct GameDetailView: View {
         let archMismatch = engine.flatMap { engine in game.isPrefix32Bit.map { $0 != engine.isWin32Only } } ?? false
         if pending > 0 {
             badges[.general] = .count(pending)
-        } else if game.executablePath.isEmpty || archMismatch {
+        } else if game.executablePath.isEmpty || archMismatch || game.lastSession?.isQuickCrash == true {
             badges[.general] = .warning
         }
         if let report, engine?.capabilities.rendererHooks != false {

@@ -187,6 +187,9 @@ struct GameHeaderView: View {
         if game.isSteamGame || game.isSteamLauncher {
             items.append(HeaderTag(text: "Steam", symbol: "cloud.fill"))
         }
+        if game.isKnownGood {
+            items.append(HeaderTag(text: "Known good", symbol: "checkmark.seal.fill", tint: .green))
+        }
         for name in report?.antiCheat ?? [] {
             items.append(HeaderTag(text: name, symbol: "exclamationmark.shield.fill", tint: .orange))
         }

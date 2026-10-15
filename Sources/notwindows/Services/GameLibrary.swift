@@ -45,6 +45,9 @@ final class GameLibrary {
     var linkHandlers: [LinkHandler] = []
     var linkScanCache: [String: (stamp: Date, protocols: [RegisteredProtocol])] = [:]
     private(set) var compatLoading: Set<UUID> = []
+    /// What each game's last log showed, read after it exits or when its page opens.
+    private(set) var lastRunReports: [UUID: RunDiagnosis] = [:]
+    private var stopRequests: Set<UUID> = []
     var compatSheetGameID: UUID?
     private var knownWinetricksVerbs: Set<String> = []
 
@@ -544,16 +547,17 @@ final class GameLibrary {
         let arguments = [session.game.arguments, extraArguments].filter { !$0.isEmpty }.joined(separator: " ")
         do {
             _ = try session.launch(executable: executable, arguments: arguments,
-                                   directory: session.game.resolvedWorkingDirectory, log: log) { _ in
+                                   directory: session.game.resolvedWorkingDirectory, log: log) { status in
                 Task { @MainActor in
                     if let game = self.game(id), game.isSteamGame || !self.prefixMates(of: game).isEmpty {
                         if let fragment = self.processFragment(for: game) { await self.waitForExit(matching: fragment) }
                     } else {
                         await session.waitUntilIdle()
                     }
-                    self.finishRun(id, started: started)
+                    self.finishRun(id, started: started, status: status)
                 }
             }
+            stopRequests.remove(id)
             states[id] = .running(since: started)
             update(id) { $0.lastPlayedAt = started }
             show(Toast(symbol: "play.fill", title: "Launching \(game.name)", detail: game.settings.direct3DBackend.title), for: id)
@@ -565,21 +569,80 @@ final class GameLibrary {
         }
     }
 
-    private func finishRun(_ id: UUID, started: Date) {
+    private func finishRun(_ id: UUID, started: Date, status: Int32) {
         guard state(of: id).isRunning else { return }
         states[id] = .idle
         let elapsed = Date().timeIntervalSince(started)
-        update(id) { $0.totalPlaytime += elapsed }
+        recordSession(PlaySession(start: started, duration: elapsed, exitCode: status, wasStopped: stopRequests.remove(id) != nil), for: id)
+    }
+
+    func recordSession(_ session: PlaySession, for id: UUID) {
+        let elapsed = session.duration
+        update(id) { game in
+            game.totalPlaytime += elapsed
+            game.lastSession = session
+            if session.isLong { game.knownGood = KnownGoodSetup(game: game, session: session) }
+        }
         refreshLinkHandlers()
         if let game = game(id), game.isSteamLauncher {
             syncSteamLibrary(id)
-        } else if let game = game(id) {
-            let session = elapsed < 60 ? "a quick session" : Format.playtime(elapsed)
-            show(Toast(symbol: "flag.checkered", title: "Finished \(game.name)", detail: "Played \(session) · \(Format.playtime(game.totalPlaytime)) total"), for: id)
+            return
+        }
+        Task {
+            await diagnoseLastRun(id)
+            guard let game = game(id) else { return }
+            let fixes = lastRunReports[id]?.suggestions.count ?? 0
+            if session.isQuickCrash {
+                let detail = fixes > 0 ? "Found \(fixes) possible fix\(fixes == 1 ? "" : "es") in the log" : "See the General tab for what the log shows"
+                show(Toast(symbol: "exclamationmark.triangle.fill", title: "\(game.name) quit after \(Int(elapsed.rounded())) s", detail: detail, tint: .orange), for: id)
+            } else {
+                let played = elapsed < 60 ? "a quick session" : Format.playtime(elapsed)
+                show(Toast(symbol: "flag.checkered", title: "Finished \(game.name)", detail: "Played \(played) · \(Format.playtime(game.totalPlaytime)) total"), for: id)
+            }
         }
     }
 
+    /// Reads the game's last log for errors that point at a fix.
+    func diagnoseLastRun(_ id: UUID) async {
+        guard let game = game(id) else { return }
+        let log = game.lastLogURL
+        let sizes = Self.displaySizes()
+        let diagnosis = await Task.detached(priority: .utility) {
+            LogDiagnostics.readLog(log).map { LogDiagnostics.diagnose($0, game: game, displaySizes: sizes) } ?? RunDiagnosis()
+        }.value
+        lastRunReports[id] = diagnosis
+    }
+
+    /// The main display's modes in points, its current one first and then largest first: what Wine offers games
+    /// with Retina mode off.
+    static func displaySizes() -> [CGSize] {
+        let modes = (CGDisplayCopyAllDisplayModes(CGMainDisplayID(), nil) as? [CGDisplayMode]) ?? []
+        let current = CGDisplayCopyDisplayMode(CGMainDisplayID()).map { [CGSize(width: $0.width, height: $0.height)] } ?? []
+        var seen = Set<String>()
+        return (current + modes.map { CGSize(width: $0.width, height: $0.height) }.sorted { $0.width * $0.height > $1.width * $1.height })
+            .filter { seen.insert("\($0.width)x\($0.height)").inserted }
+    }
+
+    /// Smart Setup's suggestions together with those from the last run, which come first. Errors in the log of a
+    /// run that didn't crash are worth a look but not a nudge.
+    func suggestions(for id: UUID) -> [CompatSuggestion] {
+        let crashed = game(id)?.lastSession?.isQuickCrash == true
+        let fromLog = (lastRunReports[id]?.suggestions ?? []).map {
+            crashed ? $0 : CompatSuggestion(action: $0.action, reason: $0.reason, source: $0.source, recommended: false)
+        }
+        var report = CompatReport()
+        report.suggestions = fromLog + (compatReports[id]?.suggestions ?? [])
+        report.deduplicate()
+        return report.suggestions
+    }
+
+    func restoreKnownGood(_ id: UUID) {
+        update(id) { game in game.knownGood?.restore(to: &game) }
+        applyIniEdits(id)
+    }
+
     func stop(_ id: UUID) {
+        stopRequests.insert(id)
         if let game = game(id), game.isSteamGame || prefixMates(of: game).contains(where: { state(of: $0.id).isBusy }) {
             killProcesses(of: game)
             return

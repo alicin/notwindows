@@ -110,17 +110,20 @@ enum WineLogLevel: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .off: "Off"
+        case .off: "Quiet"
         case .errors: "Errors"
         case .verbose: "Verbose"
         }
     }
 
+    /// The quiet level keeps the few channels that explain why a game didn't start: Wine checks a channel's flags
+    /// before formatting anything, and these print only when a DLL fails to load, a display mode is refused or a
+    /// message box opens, so they cost nothing measurable while giving Smart Setup the lines it learns from.
     var winedebug: String {
         switch self {
-        case .off: "-all"
-        case .errors: "err+all,warn-all,fixme-all,trace-all,-plugplay"
-        case .verbose: "err+all,warn+all,fixme+all,+loaddll,+seh"
+        case .off: "-all," + LogDiagnostics.channels
+        case .errors: "err+all,warn-all,fixme-all,trace-all,trace+msgbox,-plugplay"
+        case .verbose: "err+all,warn+all,fixme+all,+loaddll,+seh,+msgbox"
         }
     }
 }

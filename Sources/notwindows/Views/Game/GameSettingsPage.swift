@@ -49,6 +49,7 @@ struct GameSettingsPage: View {
         }
 
         SmartSetupBanner(gameID: gameID)
+        KnownGoodRow(gameID: gameID)
 
         if game.isSteamLauncher {
             SteamLauncherCard(gameID: gameID)
@@ -545,9 +546,9 @@ extension VulkanDriver {
 extension GameLibrary {
     /// Recommended Smart Setup changes the game doesn't have yet.
     func pendingSuggestionCount(_ id: UUID) -> Int {
-        guard let report = compatReports[id], let game = game(id) else { return 0 }
+        guard let game = game(id) else { return 0 }
         let state = compatState(id)
-        return report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) }.count
+        return suggestions(for: id).filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) }.count
     }
 }
 
@@ -612,11 +613,28 @@ private struct SmartSetupBanner: View {
 
     var body: some View {
         let pending = library.pendingSuggestionCount(gameID)
+        let session = library.game(gameID)?.lastSession
+        let diagnosis = library.lastRunReports[gameID]
         if library.compatLoading.contains(gameID) {
             banner {
                 ProgressView().controlSize(.small)
                 Text("Looking up fixes for this game…").foregroundStyle(.secondary)
                 Spacer()
+            }
+        } else if let session, session.isQuickCrash {
+            banner(tint: .orange) {
+                SymbolTile(symbol: "exclamationmark.triangle.fill", tint: .orange, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Quit \(Int(session.duration.rounded())) seconds after starting").font(.headline)
+                    Text(crashSummary(diagnosis, pending: pending))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Button("Review…") { library.compatSheetGameID = gameID }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
             }
         } else if pending > 0 || library.compatReports[gameID] == nil {
             banner {
@@ -639,14 +657,55 @@ private struct SmartSetupBanner: View {
         }
     }
 
-    private func banner(@ViewBuilder _ content: () -> some View) -> some View {
+    private func crashSummary(_ diagnosis: RunDiagnosis?, pending: Int) -> String {
+        if pending > 0 { return "The log points to \(pending) fix\(pending == 1 ? "" : "es")." }
+        if let note = diagnosis?.notes.first { return note.text }
+        return "The log doesn't say why. Raise the log level in Advanced for more detail, then try again."
+    }
+
+    private func banner(tint: Color = .purple, @ViewBuilder _ content: () -> some View) -> some View {
         HStack(spacing: 12, content: content)
             .padding(14)
             .background {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(LinearGradient(colors: [Color.purple.opacity(0.17), Color.indigo.opacity(0.07)], startPoint: .leading, endPoint: .trailing))
+                    .fill(LinearGradient(colors: [tint.opacity(0.17), (tint == .purple ? Color.indigo : tint).opacity(0.07)], startPoint: .leading, endPoint: .trailing))
             }
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.purple.opacity(0.28)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(tint.opacity(0.28)))
+    }
+}
+
+/// Whether the game still has the setup it last played well with, and a way back to it.
+private struct KnownGoodRow: View {
+    @Environment(GameLibrary.self) private var library
+    let gameID: UUID
+
+    var body: some View {
+        if let game = library.game(gameID), let good = game.knownGood {
+            let isCurrent = good.matches(game)
+            let played = "\(Format.playtime(good.duration).lowercased()) on \(good.date.formatted(date: .abbreviated, time: .omitted))"
+            HStack(spacing: 10) {
+                Image(systemName: isCurrent ? "checkmark.seal.fill" : "clock.arrow.circlepath")
+                    .foregroundStyle(isCurrent ? .green : .secondary)
+                    .font(.title3)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(isCurrent ? "Known good setup" : "Changed since the last good session").font(.callout.weight(.semibold))
+                    Text(isCurrent ? "These settings ran for \(played)." : "The setup that ran for \(played) is saved.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if !isCurrent {
+                    Button("Restore") { library.restoreKnownGood(gameID) }
+                        .controlSize(.small)
+                        .disabled(library.state(of: gameID).isBusy)
+                        .help("Go back to the settings, engine and executable of that session")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background((isCurrent ? Color.green : Color.primary).opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder((isCurrent ? Color.green : Color.primary).opacity(0.18)))
+        }
     }
 }
 
@@ -872,7 +931,7 @@ private struct LoggingCard: View {
         SettingsCard(title: "Logging", symbol: "text.alignleft", tint: .gray) {
             StatusPill(text: level.wrappedValue.title, tint: level.wrappedValue == .off ? .secondary : .gray)
         } content: {
-            SettingRow(title: "Wine log level", detail: level.wrappedValue == .verbose ? "Verbose logs slow games down; turn it back off once you're done." : nil) {
+            SettingRow(title: "Wine log level", detail: logLevelDetail(level.wrappedValue)) {
                 Picker("Wine log level", selection: level) {
                     ForEach(WineLogLevel.allCases) { Text($0.title).tag($0) }
                 }
@@ -885,6 +944,14 @@ private struct LoggingCard: View {
                 Button("Show Log", action: showLog)
                     .disabled(attributes == nil)
             }
+        }
+    }
+
+    private func logLevelDetail(_ level: WineLogLevel) -> String {
+        switch level {
+        case .off: "Only errors that point to a fix: missing DLLs, display modes the Mac lacks and the game's error messages."
+        case .errors: "Every error Wine reports."
+        case .verbose: "Verbose logs slow games down; turn it back down once you're done."
         }
     }
 

@@ -71,6 +71,12 @@ enum DebugSnapshots {
             if let game = library.games.first(where: { $0.name == argument }) { library.play(game.id) }
         case "stop":
             if let game = library.games.first(where: { $0.name == argument }) { library.stop(game.id) }
+        case "fakeexit":
+            // fakeexit:<game name>|<seconds>|<exit code> records a finished run and reads the game's last log.
+            let pieces = argument.split(separator: "|").map(String.init)
+            if pieces.count == 3, let game = library.games.first(where: { $0.name == pieces[0] }), let seconds = Double(pieces[1]), let code = Int32(pieces[2]) {
+                library.recordSession(PlaySession(start: Date().addingTimeInterval(-seconds), duration: seconds, exitCode: code), for: game.id)
+            }
         case "fakerun":
             // Toggles a game's running state without starting Wine, for reviewing the running UI.
             if let game = library.games.first(where: { $0.name == argument }) {
