@@ -439,6 +439,7 @@ final class GameLibrary {
             states[id] = .idle
             return false
         }
+        if session.game.isSteamGame { await applySteamInstallScript(for: session.game, session: session) }
         if session.game.settings.rosettaX87 && session.engine.capabilities.rosettaX87 {
             do {
                 try RosettaX87.prepare(session.engine)

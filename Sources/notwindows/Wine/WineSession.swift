@@ -76,9 +76,14 @@ struct WineSession {
     }
 
     func applyRegistry(log: URL) async throws {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("notwindows-\(game.id.uuidString).reg")
         let scope = scopesRegistryToApp ? game.executableURL?.lastPathComponent : nil
-        try RegistryWriter.document(for: game.settings, appExecutable: scope).write(to: file, atomically: true, encoding: .utf8)
+        try await importRegistry(RegistryWriter.document(for: game.settings, appExecutable: scope), log: log)
+    }
+
+    /// Imports a .reg document into the prefix with regedit.
+    func importRegistry(_ document: String, log: URL) async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("notwindows-\(UUID().uuidString).reg")
+        try document.write(to: file, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: file) }
         var env = environment
         env["WINEDEBUG"] = "-all"
@@ -118,6 +123,25 @@ struct WineSession {
 
     func open(_ tool: WineTool, log: URL) throws {
         try ProcessRunner.start(engine.loader, tool.arguments, environment: environment, directory: game.driveC, log: log)
+    }
+
+    /// Reads a value from the prefix's live registry, through whatever wineserver is already running for it.
+    func registryValue(key: String, name: String) async -> String? {
+        var env = environment
+        env["WINEDEBUG"] = "-all"
+        guard let output = try? await ProcessRunner.output(engine.loader, ["reg", "query", key, "/v", name], environment: env) else { return nil }
+        return Self.registryValue(named: name, in: output)
+    }
+
+    /// Picks a value out of `reg query` output, whose lines look like "    ActiveUser    REG_DWORD    0x210b7e9". Names
+    /// and values can contain spaces, so the type column is what splits them.
+    static func registryValue(named name: String, in output: String) -> String? {
+        for line in output.split(whereSeparator: \.isNewline) {
+            guard let type = line.range(of: #"\s{2,}REG_[A-Z_]+(\s{2,}|$)"#, options: .regularExpression) else { continue }
+            let key = line[..<type.lowerBound].trimmingCharacters(in: .whitespaces)
+            if key.caseInsensitiveCompare(name) == .orderedSame { return String(line[type.upperBound...]) }
+        }
+        return nil
     }
 
     /// Blocks until every process in the prefix has exited.

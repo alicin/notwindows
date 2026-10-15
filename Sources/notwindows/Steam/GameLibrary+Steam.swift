@@ -125,15 +125,45 @@ extension GameLibrary {
             states[launcher.id] = .preparing("Starting…")
             guard await launch(launcher.id, extraArguments: "-silent") else { return false }
         }
-        for _ in 0..<45 {
-            if !(await WineProcesses.matching("/steam.exe").isEmpty) {
-                // Give the client a moment to log in before the game asks for it.
-                try? await Task.sleep(for: .seconds(4))
+        guard let session = session(for: launcher.id) else { return false }
+        // Steam's DRM and Steamworks refuse to start a game ("Application load error 5:0000065434") until the client
+        // has signed in, which it records as ActiveUser. From a cold start that takes 10–30 seconds.
+        states[game.id] = .preparing("Waiting for Steam…")
+        for _ in 0..<90 {
+            if let user = await session.registryValue(key: #"HKCU\Software\Valve\Steam\ActiveProcess"#, name: "ActiveUser"),
+               let id = UInt64(user.replacingOccurrences(of: "0x", with: ""), radix: 16), id != 0 {
                 return true
             }
-            try? await Task.sleep(for: .seconds(2))
+            guard state(of: launcher.id).isBusy else { return false }
+            try? await Task.sleep(for: .seconds(1))
         }
-        return state(of: launcher.id).isBusy
+        alert = AppAlert(title: "Steam isn't signed in",
+                         message: "\(game.name) needs Steam to be signed in before it starts. Sign in to Steam, then press Play again.")
+        return false
+    }
+
+    /// Does what Steam does before it first starts a game: its installscript.vdf's registry keys and redistributables.
+    /// Bethesda's launchers, for one, say the game isn't installed without the key.
+    func applySteamInstallScript(for game: Game, session: WineSession) async {
+        guard let folder = game.installDirectory.map({ URL(fileURLWithPath: $0, isDirectory: true) }),
+              let file = SteamInstallScript.find(in: folder),
+              let text = try? String(contentsOf: file, encoding: .utf8),
+              let windowsFolder = SteamLibraryScanner.windowsPath(of: folder, prefix: game.prefixURL) else { return }
+        let script = SteamInstallScript(text, installDirectory: folder, windowsInstallDirectory: windowsFolder,
+                                        wow64: game.isPrefix32Bit != true)
+        let log = game.logsDirectory.appendingPathComponent("installscript.log")
+        try? FileManager.default.createDirectory(at: game.logsDirectory, withIntermediateDirectories: true)
+        if !script.registryDocument.isEmpty {
+            do { try await session.importRegistry(script.registryDocument, log: log) } catch { report("Couldn't apply \(game.name)'s Steam setup", error) }
+        }
+        for process in script.processes {
+            if await session.registryValue(key: process.hasRunKey, name: process.name) == "0x1" { continue }
+            states[game.id] = .preparing("Running first-time setup…")
+            for command in process.commands where FileManager.default.fileExists(atPath: command.executable) {
+                _ = try? await session.run(executable: URL(fileURLWithPath: command.executable), arguments: command.arguments, log: log)
+            }
+            try? await session.importRegistry(SteamInstallScript.doneDocument(for: process), log: log)
+        }
     }
 
     func writeSteamAppIDFile(for game: Game) {

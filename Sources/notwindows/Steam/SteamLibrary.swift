@@ -104,6 +104,24 @@ enum SteamLibraryScanner {
             .first { $0.appendingPathComponent("steamapps").isDirectoryURL || $0.appendingPathComponent("steam.exe").exists }
     }
 
+    /// The Windows path of a folder on one of the prefix's drives; the inverse of `unixPath(fromWindows:prefix:)`.
+    static func windowsPath(of url: URL, prefix: URL) -> String? {
+        let target = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let devices = prefix.appendingPathComponent("dosdevices", isDirectory: true)
+        var drives = [("c", prefix.appendingPathComponent("drive_c", isDirectory: true).resolvingSymlinksInPath().path)]
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: devices.path)) ?? [] where name.count == 2 && name.hasSuffix(":") {
+            drives.append((String(name.prefix(1)), devices.appendingPathComponent(name).resolvingSymlinksInPath().path))
+        }
+        // The most specific drive wins, so C: beats Z:, which maps the whole Mac.
+        for (letter, root) in drives.sorted(by: { $0.1.count > $1.1.count }) {
+            let base = root == "/" ? "" : root
+            guard target == root || target.hasPrefix(base + "/") else { continue }
+            let rest = String(target.dropFirst(base.count)).replacingOccurrences(of: "/", with: "\\")
+            return letter.uppercased() + ":" + (rest.isEmpty ? "\\" : rest)
+        }
+        return nil
+    }
+
     /// Converts a Windows path from Steam's config (e.g. `D:\\Games\\SteamLibrary`) to a path on the Mac.
     static func unixPath(fromWindows path: String, prefix: URL) -> URL? {
         let normalized = path.replacingOccurrences(of: "\\\\", with: "\\").replacingOccurrences(of: "\\", with: "/")

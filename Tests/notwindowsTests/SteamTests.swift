@@ -150,3 +150,76 @@ struct ProtocolCommandTests {
         #expect(missing.arguments(for: "n://z") == [#"C:\N\N.exe"#, "n://z"])
     }
 }
+
+struct SteamClientStateTests {
+    @Test func readsTheSignedInUserFromRegQuery() {
+        let output = """
+
+        HKEY_CURRENT_USER\\Software\\Valve\\Steam\\ActiveProcess
+            ActiveUser    REG_DWORD    0x210b7e9
+            pid    REG_DWORD    0x20
+            installed path    REG_SZ    C:\\Program Files (x86)\\Fallout New Vegas\\
+
+        """
+        #expect(WineSession.registryValue(named: "ActiveUser", in: output) == "0x210b7e9")
+        #expect(WineSession.registryValue(named: "activeuser", in: output) == "0x210b7e9")
+        #expect(WineSession.registryValue(named: "installed path", in: output) == #"C:\Program Files (x86)\Fallout New Vegas\"#)
+        #expect(WineSession.registryValue(named: "SteamClientDll", in: output) == nil)
+    }
+}
+
+struct SteamInstallScriptTests {
+    static let falloutNewVegas = #"""
+    "installscript"
+    {
+    	"registry"
+    	{
+    		"hkey_local_machine\\software\\bethesda softworks\\falloutnv"
+    		{
+    			"string"
+    			{
+    				"installed path"		"%INSTALLDIR%\\"
+    			}
+    		}
+    	}
+    	"Run Process"
+    	{
+    		"visualcredist"
+    		{
+    			"hasrunkey"		"HKEY_LOCAL_MACHINE\\Software\\Valve\\Steam\\Apps\\22380"
+    			"process 1"		"%INSTALLDIR%\\Redists\\vcredist_x86.exe"
+    			"command 1"		"/q"
+    			"nocleanup"		"1"
+    		}
+    	}
+    }
+    """#
+
+    @Test func writesRegistryKeysWhereSteamWould() {
+        let folder = URL(fileURLWithPath: "/P/drive_c/Program Files (x86)/Steam/steamapps/common/Fallout New Vegas")
+        let windows = #"C:\Program Files (x86)\Steam\steamapps\common\Fallout New Vegas"#
+        let script = SteamInstallScript(Self.falloutNewVegas, installDirectory: folder, windowsInstallDirectory: windows, wow64: true)
+        #expect(script.registryDocument.contains(#"[HKEY_LOCAL_MACHINE\software\Wow6432Node\bethesda softworks\falloutnv]"#))
+        #expect(script.registryDocument.contains(#""installed path"="C:\\Program Files (x86)\\Steam\\steamapps\\common\\Fallout New Vegas\\""#))
+
+        let process = try! #require(script.processes.first)
+        #expect(process.name == "visualcredist")
+        #expect(process.hasRunKey == #"HKEY_LOCAL_MACHINE\Software\Wow6432Node\Valve\Steam\Apps\22380"#)
+        #expect(process.commands.first?.executable == folder.path + "/Redists/vcredist_x86.exe")
+        #expect(process.commands.first?.arguments == "/q")
+
+        let win32 = SteamInstallScript(Self.falloutNewVegas, installDirectory: folder, windowsInstallDirectory: windows, wow64: false)
+        #expect(win32.registryDocument.contains(#"[HKEY_LOCAL_MACHINE\software\bethesda softworks\falloutnv]"#))
+    }
+
+    @Test func convertsPrefixPathsToWindowsPaths() throws {
+        let prefix = FileManager.default.temporaryDirectory.appendingPathComponent("prefix-\(UUID().uuidString)", isDirectory: true)
+        let game = prefix.appendingPathComponent("drive_c/Program Files (x86)/Steam/steamapps/common/Game", isDirectory: true)
+        try FileManager.default.createDirectory(at: game, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: prefix.appendingPathComponent("dosdevices"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: prefix.appendingPathComponent("dosdevices/c:").path, withDestinationPath: "../drive_c")
+        try FileManager.default.createSymbolicLink(atPath: prefix.appendingPathComponent("dosdevices/z:").path, withDestinationPath: "/")
+        #expect(SteamLibraryScanner.windowsPath(of: game, prefix: prefix) == #"C:\Program Files (x86)\Steam\steamapps\common\Game"#)
+        #expect(SteamLibraryScanner.windowsPath(of: URL(fileURLWithPath: "/Volumes/Games"), prefix: prefix) == #"Z:\Volumes\Games"#)
+    }
+}
