@@ -412,6 +412,7 @@ struct GameSettingsPage: View {
 
         DLLOverridesCard(gameID: gameID)
         EnvironmentCard(gameID: gameID)
+        IniEditsCard(gameID: gameID)
 
         SettingsCard(title: "Share settings", symbol: "square.and.arrow.up.fill", tint: .blue, subtitle: "Pass this setup on to someone else",
                      footer: "A settings file carries the renderer, sync, display, input and system settings, launch arguments, the engine and the Winetricks components installed here. Paths and play history stay on this Mac.") {
@@ -978,6 +979,55 @@ private struct EnvironmentCard: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
         }
+    }
+}
+
+/// The .ini changes Smart Setup made, and whether they're still in place.
+private struct IniEditsCard: View {
+    @Environment(GameLibrary.self) private var library
+    let gameID: UUID
+
+    var body: some View {
+        if let game = library.game(gameID), !game.settings.iniEdits.isEmpty {
+            let edits = game.settings.iniEdits
+            let state = library.compatState(gameID)
+            SettingsCard(title: "Game files", symbol: "doc.badge.gearshape.fill", tint: .orange, subtitle: "Changes made to the game's .ini files",
+                         footer: "The first change to a file keeps the original next to it with a .notwindows-backup extension. Removing a change from this list leaves the file as it is.") {
+                StatusPill(text: "\(edits.count)", tint: .orange)
+            } content: {
+                ForEach(Array(edits.enumerated()), id: \.element.id) { index, edit in
+                    if index > 0 { RowDivider() }
+                    let status = status(of: edit, in: game, state: state)
+                    SettingRow(title: "\(edit.setting.key) = \(state.expand(edit.setting.value))",
+                               detail: "\(edit.setting.fileName) · [\(edit.setting.section)]", badge: status.text, badgeTint: status.tint) {
+                        HStack(spacing: 10) {
+                            if status.canReapply {
+                                Button("Apply Again") {
+                                    library.update(gameID) { game in
+                                        if let i = game.settings.iniEdits.firstIndex(where: { $0.id == edit.id }) { game.settings.iniEdits[i].isPending = true }
+                                    }
+                                    library.applyIniEdits(gameID)
+                                }
+                                .controlSize(.small)
+                            }
+                            Button {
+                                library.update(gameID) { $0.settings.iniEdits.removeAll { $0.id == edit.id } }
+                            } label: {
+                                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove from the list")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func status(of edit: IniEdit, in game: Game, state: CompatState) -> (text: String, tint: Color, canReapply: Bool) {
+        if edit.isPending { return ("Waits for the game to create the file", .orange, false) }
+        if CompatAction.iniSetting(edit.setting).isSatisfied(by: game, state: state) { return ("Applied", .green, false) }
+        return ("Changed since", .secondary, true)
     }
 }
 

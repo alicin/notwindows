@@ -3,11 +3,13 @@ import SwiftUI
 /// Review sheet for compatibility suggestions gathered from the executable and online fix databases.
 struct CompatSheet: View {
     @Environment(GameLibrary.self) private var library
+    @Environment(EngineManager.self) private var engines
     @Environment(\.dismiss) private var dismiss
     let gameID: UUID
 
     @State private var selected: Set<String> = []
     @State private var seededFor: Date?
+    @State private var installingEngines: Set<EngineChoice> = []
 
     private var game: Game? { library.game(gameID) }
     private var report: CompatReport? { library.compatReports[gameID] }
@@ -133,13 +135,20 @@ struct CompatSheet: View {
             }
             ForEach(order, id: \.self) { source in
                 Section {
+                    let state = state
                     ForEach(groups[source] ?? []) { suggestion in
                         SuggestionRow(
                             suggestion: suggestion,
                             isSatisfied: game.map { suggestion.action.isSatisfied(by: $0, state: state) } ?? false,
+                            isAvailable: suggestion.action.isAvailable(state: state),
+                            detail: game.flatMap { suggestion.action.detail(for: $0, state: state) },
                             isOn: Binding(get: { selected.contains(suggestion.id) },
                                           set: { if $0 { selected.insert(suggestion.id) } else { selected.remove(suggestion.id) } })
-                        )
+                        ) {
+                            if case .engine(let choice) = suggestion.action, !suggestion.action.isAvailable(state: state) {
+                                installButton(choice, for: suggestion)
+                            }
+                        }
                     }
                 } header: {
                     HStack {
@@ -185,13 +194,41 @@ struct CompatSheet: View {
         .listStyle(.inset)
     }
 
+    @ViewBuilder
+    private func installButton(_ choice: EngineChoice, for suggestion: CompatSuggestion) -> some View {
+        if installingEngines.contains(choice) {
+            ProgressView().controlSize(.small)
+        } else {
+            Button("Install") {
+                installingEngines.insert(choice)
+                Task {
+                    defer { installingEngines.remove(choice) }
+                    do {
+                        switch choice {
+                        case .family(let family): try await engines.installNewest(of: family)
+                        case .named(let name):
+                            if engines.catalog.isEmpty { await engines.refreshCatalog() }
+                            guard let item = engines.catalog.first(where: { $0.name == name }) else { return }
+                            try await engines.install(item)
+                        }
+                        selected.insert(suggestion.id)
+                    } catch {
+                        library.report("Couldn't install \(choice.title)", error)
+                    }
+                }
+            }
+            .controlSize(.small)
+        }
+    }
+
     private func sourceTitle(_ source: CompatSource, report: CompatReport) -> String {
         if case .protonFixes = source, let match = report.match { return "umu-protonfixes for \(match.title)" }
         return source.title
     }
 
     private var footer: some View {
-        let actionable = report?.suggestions.filter { selected.contains($0.id) } ?? []
+        let state = state
+        let actionable = report?.suggestions.filter { selected.contains($0.id) && $0.action.isAvailable(state: state) } ?? []
         let installs = actionable.filter(\.action.needsInstall).count
         return HStack {
             Text("Sources: the game's executable, [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net) and [ProtonDB](https://www.protondb.com).")
@@ -215,31 +252,41 @@ struct CompatSheet: View {
 
     private func seedSelection() {
         guard let report, let game else { return }
-        selected = Set(report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) }.map(\.id))
+        let state = state
+        selected = Set(report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) && $0.action.isAvailable(state: state) }.map(\.id))
     }
 }
 
-private struct SuggestionRow: View {
+private struct SuggestionRow<Accessory: View>: View {
     let suggestion: CompatSuggestion
     let isSatisfied: Bool
+    var isAvailable = true
+    var detail: String?
     @Binding var isOn: Bool
+    @ViewBuilder var accessory: Accessory
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Toggle("", isOn: $isOn)
+            Toggle("", isOn: isAvailable ? $isOn : .constant(false))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-                .disabled(isSatisfied)
+                .disabled(isSatisfied || !isAvailable)
             Image(systemName: suggestion.action.symbol)
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(suggestion.action.title)
                 Text(suggestion.reason).font(.caption).foregroundStyle(.secondary)
+                if let detail {
+                    Text(detail).font(.caption).foregroundStyle(.tertiary).textSelection(.enabled)
+                }
             }
             Spacer()
+            accessory
             if isSatisfied {
                 badge("Already set", .green)
+            } else if !isAvailable {
+                badge("Not installed", .orange)
             } else if !suggestion.recommended {
                 badge("Optional", .secondary)
             }
@@ -247,7 +294,7 @@ private struct SuggestionRow: View {
         .padding(.vertical, 3)
         .opacity(isSatisfied ? 0.6 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { if !isSatisfied { isOn.toggle() } }
+        .onTapGesture { if !isSatisfied && isAvailable { isOn.toggle() } }
     }
 
     private func badge(_ text: String, _ color: Color) -> some View {

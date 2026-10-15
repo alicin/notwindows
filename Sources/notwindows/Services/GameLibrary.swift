@@ -186,8 +186,9 @@ final class GameLibrary {
         refreshIconFromExecutable(game.id)
         let id = game.id
         Task {
-            await prepare(id)
+            // Smart Setup goes first, so a suggested engine (a 32-bit one, say) is in place when the prefix is made.
             await analyzeCompatibility(id, autoApply: autoApplyCompat)
+            await prepare(id)
             syncSteamLibrary(id)
         }
         return game
@@ -273,7 +274,22 @@ final class GameLibrary {
     }
 
     func compatState(_ id: UUID) -> CompatState {
-        CompatState(installedVerbs: installedWinetricksVerbs(id))
+        let engine = game(id).flatMap { engines.engine(named: launcher(of: $0)?.engineName ?? $0.engineName) }
+        // Wine treats the display with the menu bar as the primary one, and games go full screen there.
+        return CompatState(installedVerbs: installedWinetricksVerbs(id), engineName: engine?.name,
+                           installedEngines: engines.installed.map(\.name), screenSize: NSScreen.screens.first?.frame.size)
+    }
+
+    /// Whether a suggestion can be applied without asking: it's a setting, not an install, and it won't leave the
+    /// game unable to start.
+    func canApplyUnattended(_ action: CompatAction, to game: Game, state: CompatState) -> Bool {
+        guard !action.needsInstall, action.isAvailable(state: state) else { return false }
+        if case .engine(let choice) = action {
+            // Steam games run on Steam's engine, and an existing prefix only runs on engines of its own architecture.
+            guard !game.isSteamGame, let name = state.engine(for: choice), let engine = engines.engine(named: name) else { return false }
+            if let is32Bit = game.isPrefix32Bit, is32Bit != engine.isWin32Only { return false }
+        }
+        return true
     }
 
     func analyzeCompatibility(_ id: UUID, match: CompatMatch? = nil, autoApply: Bool = false) async {
@@ -293,14 +309,15 @@ final class GameLibrary {
         guard autoApply else { return }
 
         let state = compatState(id)
-        let pending = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: self.game(id) ?? game, state: state) }
-        let settings = pending.filter { !$0.action.needsInstall }
-        let installs = pending.filter { $0.action.needsInstall }
+        let current = self.game(id) ?? game
+        let pending = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: current, state: state) }
+        let settings = pending.filter { canApplyUnattended($0.action, to: current, state: state) }
+        let installs = pending.filter { !canApplyUnattended($0.action, to: current, state: state) }
         if !settings.isEmpty { applyCompat(settings, to: id) }
 
         var parts: [String] = []
         if !settings.isEmpty { parts.append("applied \(settings.count) setting\(settings.count == 1 ? "" : "s")") }
-        if !installs.isEmpty { parts.append("\(installs.count) install\(installs.count == 1 ? "" : "s") to review") }
+        if !installs.isEmpty { parts.append("\(installs.count) to review") }
         if let warning = report.warnings.first, report.executable?.antiCheat.isEmpty == false {
             show(Toast(symbol: "exclamationmark.shield.fill", title: "\(game.name): anti-cheat detected", detail: warning, tint: .orange), for: id)
         } else if !parts.isEmpty {
@@ -311,16 +328,42 @@ final class GameLibrary {
 
     /// Applies setting changes in one save and queues any winetricks installs.
     func applyCompat(_ suggestions: [CompatSuggestion], to id: UUID) {
-        let changes = suggestions.filter { !$0.action.needsInstall }
+        let state = compatState(id)
+        let changes = suggestions.filter { !$0.action.needsInstall && $0.action.isAvailable(state: state) }
         if !changes.isEmpty {
             update(id) { game in
-                for suggestion in changes { suggestion.action.apply(to: &game) }
+                for suggestion in changes { suggestion.action.apply(to: &game, state: state) }
             }
         }
+        if changes.contains(where: { if case .iniSetting = $0.action { true } else { false } }) { applyIniEdits(id) }
         let verbs = suggestions.compactMap { suggestion -> String? in
             if case .winetricks(let verb) = suggestion.action { return verb } else { return nil }
         }
         if !verbs.isEmpty { startWinetricks(verbs, force: false, unattended: true, for: id) }
+    }
+
+    /// Writes the game's pending .ini changes into files that exist by now.
+    func applyIniEdits(_ id: UUID) {
+        guard let game = game(id), game.settings.iniEdits.contains(where: \.isPending) else { return }
+        let state = compatState(id)
+        var landed = Set<UUID>()
+        let pending = game.settings.iniEdits.filter(\.isPending)
+        let files = Dictionary(grouping: pending) { game.path(forWindowsPath: $0.setting.file) }
+        for (file, edits) in files {
+            guard let file else { continue }
+            do {
+                let values = edits.map { (section: $0.setting.section, key: $0.setting.key, value: state.expand($0.setting.value)) }
+                if try IniEditor.apply(values, to: file) { landed.formUnion(edits.map(\.id)) }
+            } catch {
+                report("Couldn't change \(file.lastPathComponent)", error)
+            }
+        }
+        guard !landed.isEmpty else { return }
+        update(id) { game in
+            for index in game.settings.iniEdits.indices where landed.contains(game.settings.iniEdits[index].id) {
+                game.settings.iniEdits[index].isPending = false
+            }
+        }
     }
 
     nonisolated static func suggestedName(for executable: URL) -> String {
@@ -446,6 +489,7 @@ final class GameLibrary {
             return false
         }
         if session.game.isSteamGame { await applySteamInstallScript(for: session.game, session: session) }
+        applyIniEdits(id)
         if session.game.settings.rosettaX87 && session.engine.capabilities.rosettaX87 {
             do {
                 try RosettaX87.prepare(session.engine)

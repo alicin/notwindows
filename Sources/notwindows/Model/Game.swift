@@ -86,11 +86,38 @@ struct Game: Codable, Identifiable, Hashable {
 
     /// An existing file in the install folder, matching each part of `path` (either slash) regardless of case.
     func installFile(_ path: String) -> URL? {
-        guard var url = installFolder else { return nil }
-        for part in path.split(whereSeparator: { $0 == "/" || $0 == "\\" }) {
+        guard let folder = installFolder else { return nil }
+        let url = Self.resolve(path, in: folder)
+        return url.exists ? url : nil
+    }
+
+    /// The prefix user's Documents folder, which Wine links to the Mac's own Documents.
+    var documentsFolder: URL? {
+        let users = driveC.appendingPathComponent("users", isDirectory: true)
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: users.path)) ?? []).filter { $0 != "Public" }
+        let user = names.contains(NSUserName()) ? NSUserName() : names.sorted().first
+        guard let user else { return nil }
+        let home = users.appendingPathComponent(user, isDirectory: true)
+        // Wine before 5.0 called it "My Documents".
+        return ["Documents", "My Documents"].map { home.appendingPathComponent($0, isDirectory: true) }.first(where: \.exists)
+    }
+
+    /// The Mac path of a %DOCUMENTS% or %INSTALLDIR% Windows path, or nil when the folder it starts from is unknown.
+    func path(forWindowsPath path: String) -> URL? {
+        for (placeholder, folder) in [("%DOCUMENTS%", documentsFolder), ("%INSTALLDIR%", installFolder)]
+        where path.range(of: placeholder, options: [.anchored, .caseInsensitive]) != nil {
+            guard let folder else { return nil }
+            return Self.resolve(String(path.dropFirst(placeholder.count)), in: folder)
+        }
+        return nil
+    }
+
+    /// Follows `path` (either slash) from `folder`, matching each existing part regardless of case as Windows does.
+    static func resolve(_ path: String, in folder: URL) -> URL {
+        var url = folder
+        for part in path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).map(String.init) {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
-            guard let name = names.first(where: { $0.caseInsensitiveCompare(String(part)) == .orderedSame }) else { return nil }
-            url.appendPathComponent(name)
+            url.appendPathComponent(names.first { $0.caseInsensitiveCompare(part) == .orderedSame } ?? part)
         }
         return url
     }

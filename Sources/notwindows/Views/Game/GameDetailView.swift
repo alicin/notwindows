@@ -40,6 +40,7 @@ struct GameDetailView: View {
     private static let space = "gamePage"
     private static let topAnchor = "top"
     private static let contentAnchor = "content"
+    private static let bottomAnchor = "bottom"
 
     var body: some View {
         if let game = library.game(gameID) {
@@ -61,6 +62,7 @@ struct GameDetailView: View {
                                     .id(tab)
                                     .padding(.top, 8)
                                     .padding(.bottom, 36)
+                                Color.clear.frame(height: 0).id(Self.bottomAnchor)
                             }
                             // Short tabs still fill the page, so switching to one keeps the header scrolled away.
                             .frame(minHeight: viewportHeight, alignment: .top)
@@ -107,6 +109,7 @@ struct GameDetailView: View {
                         else if name == "smart" { library.compatSheetGameID = gameID }
                         else if name == "collapse" { withAnimation(.smooth(duration: 0.7)) { proxy.scrollTo(Self.contentAnchor, anchor: belowStrip) } }
                         else if name == "expand" { withAnimation(.smooth(duration: 0.7)) { proxy.scrollTo(Self.topAnchor, anchor: .top) } }
+                        else if name == "bottom" { proxy.scrollTo(Self.bottomAnchor, anchor: .bottom) }
                         else if let t = GameTab(rawValue: name) { tab = t }
                     }
                 }

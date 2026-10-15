@@ -47,6 +47,46 @@ struct ExecutableReport: Equatable {
 /// What deciding whether an action is already in place needs to know beyond the game itself.
 struct CompatState {
     var installedVerbs: Set<String> = []
+    /// The engine the game runs with: its own, its Steam launcher's, or the default.
+    var engineName: String?
+    /// Installed engines, newest first.
+    var installedEngines: [String] = []
+    /// The main display's size in points, for %SCREEN_WIDTH% and %SCREEN_HEIGHT%.
+    var screenSize: CGSize?
+
+    func expand(_ value: String) -> String {
+        guard let screenSize else { return value }
+        return value.replacingOccurrences(of: "%SCREEN_WIDTH%", with: String(Int(screenSize.width)), options: .caseInsensitive)
+            .replacingOccurrences(of: "%SCREEN_HEIGHT%", with: String(Int(screenSize.height)), options: .caseInsensitive)
+    }
+
+    /// The installed engine an engine choice lands on.
+    func engine(for choice: EngineChoice) -> String? {
+        switch choice {
+        case .named(let name): installedEngines.contains(name) ? name : nil
+        case .family(let family): installedEngines.first { EngineFamily(engineName: $0) == family }
+        }
+    }
+}
+
+/// A specific Wine engine, or the newest installed one of a family.
+enum EngineChoice: Hashable {
+    case named(String)
+    case family(EngineFamily)
+
+    var title: String {
+        switch self {
+        case .named(let name): Engine.displayName(for: name)
+        case .family(let family): family.title
+        }
+    }
+
+    func matches(_ engineName: String) -> Bool {
+        switch self {
+        case .named(let name): engineName == name
+        case .family(let family): EngineFamily(engineName: engineName) == family
+        }
+    }
 }
 
 /// A single change notwindows can make to a game.
@@ -67,6 +107,11 @@ enum CompatAction: Hashable {
     case rosettaX87(Bool)
     /// A path relative to the game's install folder.
     case executable(String)
+    case advertiseAVX(Bool)
+    case retina(Bool)
+    case vulkanDriver(VulkanDriver)
+    case engine(EngineChoice)
+    case iniSetting(IniSetting)
 
     /// Short "what changes" label for the review sheet.
     var title: String {
@@ -86,6 +131,13 @@ enum CompatAction: Hashable {
         case .rename(let name): "Rename to “\(name)”"
         case .rosettaX87(let on): "rosettax87 \(on ? "on" : "off")"
         case .executable(let path): "Start \(Self.fileName(path))"
+        case .advertiseAVX(let on): "Advertise AVX \(on ? "on" : "off")"
+        case .retina(let on): "Retina mode \(on ? "on" : "off")"
+        case .vulkanDriver(let driver): "Vulkan driver → \(driver.title)"
+        case .engine(let choice): "Wine engine → \(choice.title)"
+        case .iniSetting(let ini):
+            "\(ini.fileName): \(ini.key) = " + ini.value.replacingOccurrences(of: "%SCREEN_WIDTH%", with: "screen width", options: .caseInsensitive)
+                .replacingOccurrences(of: "%SCREEN_HEIGHT%", with: "screen height", options: .caseInsensitive)
         }
     }
 
@@ -95,8 +147,8 @@ enum CompatAction: Hashable {
 
     var symbol: String {
         switch self {
-        case .renderer, .direct3D9, .cncDDraw: "display"
-        case .wineRosetta, .esync, .msync, .rosettaX87: "gauge.with.dots.needle.67percent"
+        case .renderer, .direct3D9, .cncDDraw, .retina, .vulkanDriver: "display"
+        case .wineRosetta, .esync, .msync, .rosettaX87, .advertiseAVX: "gauge.with.dots.needle.67percent"
         case .windowsVersion, .keepMono: "macwindow"
         case .dllOverride: "puzzlepiece.extension"
         case .environment: "terminal"
@@ -104,6 +156,8 @@ enum CompatAction: Hashable {
         case .winetricks: "wand.and.stars"
         case .rename: "character.cursor.ibeam"
         case .executable: "play.rectangle"
+        case .engine: "wineglass"
+        case .iniSetting: "doc.badge.gearshape"
         }
     }
 
@@ -136,10 +190,50 @@ enum CompatAction: Hashable {
         case .executable(let path):
             guard let current = game.executableURL, let target = game.installFile(path) else { return false }
             return current.standardizedFileURL.path.lowercased() == target.standardizedFileURL.path.lowercased()
+        case .advertiseAVX(let on):
+            return s.advertiseAVX == on
+        case .retina(let on):
+            return s.retinaMode == on
+        case .vulkanDriver(let driver):
+            return s.vulkanDriver == driver
+        case .engine(let choice):
+            return state.engineName.map(choice.matches) ?? false
+        case .iniSetting(let ini):
+            guard let file = game.path(forWindowsPath: ini.file) else { return false }
+            guard file.exists else {
+                return s.iniEdits.contains { $0.isPending && $0.setting.targets(ini) && $0.setting.value == ini.value }
+            }
+            return IniEditor.value(in: file, section: ini.section, key: ini.key) == state.expand(ini.value)
         }
     }
 
-    func apply(to game: inout Game) {
+    /// Whether `apply` can do anything right now. An engine that isn't installed has to be installed first.
+    func isAvailable(state: CompatState) -> Bool {
+        switch self {
+        case .engine(let choice): state.engine(for: choice) != nil
+        default: true
+        }
+    }
+
+    /// What the change touches, when the title doesn't say.
+    func detail(for game: Game, state: CompatState) -> String? {
+        switch self {
+        case .executable:
+            return game.executableURL.map { "Instead of \($0.lastPathComponent)" }
+        case .engine(let choice) where !isAvailable(state: state):
+            return "\(choice.title) isn't installed yet."
+        case .iniSetting(let ini):
+            guard let file = game.path(forWindowsPath: ini.file) else { return nil }
+            let path = (file.path as NSString).abbreviatingWithTildeInPath
+            let value = state.expand(ini.value) == ini.value ? "" : " = \(state.expand(ini.value))"
+            return file.exists ? "[\(ini.section)] \(ini.key)\(value) in \(path)"
+                : "\(path) doesn't exist yet; the game creates it on its first run, and the change is made before the next one."
+        default:
+            return nil
+        }
+    }
+
+    func apply(to game: inout Game, state: CompatState = CompatState()) {
         switch self {
         case .renderer(let b): game.settings.direct3DBackend = b
         case .direct3D9(let b): game.settings.direct3D9Backend = b
@@ -170,6 +264,18 @@ enum CompatAction: Hashable {
             game.workingDirectory = nil
             // Registry settings may be scoped to the executable's name, so write them again for the new one.
             game.appliedRegistryFingerprint = nil
+        case .advertiseAVX(let on):
+            game.settings.advertiseAVX = on
+        case .retina(let on):
+            game.settings.retinaMode = on
+        case .vulkanDriver(let driver):
+            game.settings.vulkanDriver = driver
+        case .engine(let choice):
+            if let name = state.engine(for: choice) { game.engineName = name }
+        case .iniSetting(let ini):
+            // The file itself is written by GameLibrary, which also retries edits whose file doesn't exist yet.
+            game.settings.iniEdits.removeAll { $0.setting.targets(ini) }
+            game.settings.iniEdits.append(IniEdit(setting: ini))
         }
     }
 }
@@ -254,6 +360,11 @@ struct CompatReport {
         case .rename: "rename"
         case .rosettaX87: "x87"
         case .executable: "executable"
+        case .advertiseAVX: "avx"
+        case .retina: "retina"
+        case .vulkanDriver: "vulkan"
+        case .engine: "engine"
+        case .iniSetting(let ini): "ini-\(ini.file.lowercased())-\(ini.section.lowercased())-\(ini.key.lowercased())"
         default: nil
         }
     }

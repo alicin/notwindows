@@ -121,6 +121,15 @@ final class EngineManager {
         try await installArchive(archive, name: item.name)
     }
 
+    /// Installs the newest engine of a family from the catalog.
+    func installNewest(of family: EngineFamily) async throws {
+        if catalog.isEmpty { await refreshCatalog() }
+        guard let item = catalog.first(where: { $0.family == family }) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSLocalizedDescriptionKey: catalogError ?? "No \(family.title) engine is available to download."])
+        }
+        try await install(item)
+    }
+
     func importArchive(_ archive: URL) async throws {
         let name = Self.engineName(forArchive: archive)
         progress[name] = 0.5

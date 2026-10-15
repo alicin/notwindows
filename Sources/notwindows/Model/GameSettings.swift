@@ -156,6 +156,30 @@ struct EnvironmentVariable: Codable, Hashable, Identifiable {
     var value: String
 }
 
+/// A value in one of the game's .ini files. `file` is a Windows path starting with %DOCUMENTS% (the prefix user's
+/// Documents) or %INSTALLDIR%; `value` may use %SCREEN_WIDTH% and %SCREEN_HEIGHT%.
+struct IniSetting: Codable, Hashable {
+    var file: String
+    var section: String
+    var key: String
+    var value: String
+
+    var fileName: String { CompatAction.fileName(file) }
+
+    func targets(_ other: IniSetting) -> Bool {
+        file.caseInsensitiveCompare(other.file) == .orderedSame && section.caseInsensitiveCompare(other.section) == .orderedSame
+            && key.caseInsensitiveCompare(other.key) == .orderedSame
+    }
+}
+
+/// An .ini change notwindows made. Games create most of their .ini files on first run, so a change to a file that
+/// doesn't exist yet waits and is applied before each launch until it lands.
+struct IniEdit: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var setting: IniSetting
+    var isPending = true
+}
+
 struct GameSettings: Codable, Hashable {
     // Graphics
     var direct3DBackend: Direct3DBackend = .dxmt
@@ -189,6 +213,7 @@ struct GameSettings: Codable, Hashable {
     var skipGecko = false
     var dllOverrides: [DLLOverride] = []
     var environment: [EnvironmentVariable] = []
+    var iniEdits: [IniEdit] = []
 
     init() {}
 
@@ -226,5 +251,6 @@ struct GameSettings: Codable, Hashable {
         skipGecko = (try? c.decodeIfPresent(Bool.self, forKey: .skipGecko)) ?? d.skipGecko
         dllOverrides = (try? c.decodeIfPresent([DLLOverride].self, forKey: .dllOverrides)) ?? d.dllOverrides
         environment = (try? c.decodeIfPresent([EnvironmentVariable].self, forKey: .environment)) ?? d.environment
+        iniEdits = (try? c.decodeIfPresent([IniEdit].self, forKey: .iniEdits)) ?? d.iniEdits
     }
 }
