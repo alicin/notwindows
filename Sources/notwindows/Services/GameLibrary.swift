@@ -334,8 +334,12 @@ final class GameLibrary {
     private func analyze(_ game: Game, match: CompatMatch?) async -> CompatReport {
         let steamMatch = game.steamAppID.map { CompatMatch(title: game.name, steamAppID: $0, umuID: nil, store: "steam") }
         let engine = engines.engine(named: launcher(of: game)?.engineName ?? game.engineName)
+        // The game's own Steam client first, then any other in the library, which may know the app too.
+        let clients = ([launcher(of: game)] + games.filter(\.isSteamLauncher)).compactMap { $0 }
+        var seen = Set<String>()
+        let appInfo = clients.compactMap { SteamAppInfo.file(inPrefix: $0.prefixURL) }.filter { seen.insert($0.path).inserted }
         return await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match ?? steamMatch,
-                                           supportsRosettaX87: engine?.capabilities.rosettaX87 ?? true)
+                                           supportsRosettaX87: engine?.capabilities.rosettaX87 ?? true, appInfoFiles: appInfo)
     }
 
     /// Applies setting changes in one save and queues any winetricks installs.

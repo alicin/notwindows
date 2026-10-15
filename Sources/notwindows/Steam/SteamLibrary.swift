@@ -192,6 +192,14 @@ enum SteamLibraryScanner {
             || app.name.hasPrefix("Steam Linux Runtime")
     }
 
+    /// The executable Steam itself starts for the app, from the client's appinfo cache.
+    static func officialExecutable(of app: SteamInstalledApp, appInfo: VDF.Value?) -> URL? {
+        guard let option = appInfo.flatMap({ SteamAppInfo.launchOptions($0).first }) else { return nil }
+        var game = Game(name: app.name)
+        game.installDirectory = app.installDirectory.path
+        return game.installFile(option.executable)
+    }
+
     /// Picks the most likely game executable inside an install folder.
     static func mainExecutable(in installDirectory: URL, name: String) -> URL? {
         let candidates = ExecutableScanner.scan(installDirectory, limit: 20)

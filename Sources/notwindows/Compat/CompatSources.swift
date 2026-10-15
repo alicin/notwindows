@@ -56,8 +56,9 @@ actor CompatSources {
 
     // MARK: Cached fetch
 
-    /// Returns cached data younger than `maxAge`, otherwise fetches. A 404 is cached as an empty body.
-    private func fetch(_ url: URL, cacheName: String, maxAge: TimeInterval = 3 * 86_400) async throws -> Data? {
+    /// Returns cached data younger than `maxAge`, otherwise fetches. A 404 is cached as an empty body, and so is a
+    /// response `isUsable` turns down.
+    private func fetch(_ url: URL, cacheName: String, maxAge: TimeInterval = 3 * 86_400, isUsable: ((Data) -> Bool)? = nil) async throws -> Data? {
         let file = cacheDirectory.appendingPathComponent(cacheName)
         if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
            let modified = attributes[.modificationDate] as? Date, Date().timeIntervalSince(modified) < maxAge,
@@ -76,6 +77,7 @@ actor CompatSources {
             guard (200..<300).contains(status) else {
                 throw URLError(.badServerResponse, userInfo: [NSLocalizedDescriptionKey: "\(url.host() ?? "Server") returned HTTP \(status)"])
             }
+            if let isUsable, !isUsable(data) { return nil }
             try? data.write(to: file)
             return data
         } catch {
@@ -217,6 +219,61 @@ actor CompatSources {
             guard installer["runner"] as? String == "wine", let script = installer["script"] as? [String: Any] else { return nil }
             return ((installer["slug"] as? String) ?? slug, script)
         }
+    }
+
+    // MARK: Wikis
+
+    static let pcGamingWikiAPI = "https://www.pcgamingwiki.com/w/api.php"
+    static let appleGamingWikiAPI = "https://www.applegamingwiki.com/w/api.php"
+
+    /// PCGamingWiki's infobox for a game, found by Steam app ID or else by title. Cargo queries need an account since
+    /// August 2026, so this reads the page's wikitext.
+    func pcGamingWiki(steamAppID: Int?, title: String?) async throws -> WikiGameInfo? {
+        guard let page = try await wikiPage(api: Self.pcGamingWikiAPI, cache: "pcgw", steamAppID: steamAppID, title: title, maxAge: 30 * 86_400) else { return nil }
+        return WikiGameInfo(page: page.title, wikitext: page.wikitext)
+    }
+
+    func appleGamingWiki(steamAppID: Int?, title: String?) async throws -> MacCompatibility? {
+        guard let page = try await wikiPage(api: Self.appleGamingWikiAPI, cache: "agw", steamAppID: steamAppID, title: title, maxAge: 7 * 86_400) else { return nil }
+        return MacCompatibility(page: page.title, wikitext: page.wikitext)
+    }
+
+    private func wikiPage(api: String, cache: String, steamAppID: Int?, title: String?, maxAge: TimeInterval) async throws -> (title: String, wikitext: String)? {
+        func url(_ items: [String: String]) -> URL {
+            var components = URLComponents(string: api)!
+            components.queryItems = (items.merging(["format": "json", "formatversion": "2"]) { a, _ in a }).sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+            return components.url!
+        }
+        func slug(_ text: String) -> String { text.lowercased().replacingOccurrences(of: #"[^a-z0-9]+"#, with: "-", options: .regularExpression) }
+        // MediaWiki reports errors, like a lookup that's down for a while, inside a successful response.
+        let noError: (Data) -> Bool = { data in ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] == nil }
+
+        var page: String?
+        if let steamAppID,
+           let data = try await fetch(url(["action": "idlookup", "field": "steamappid", "value": String(steamAppID)]), cacheName: "\(cache)-id-\(steamAppID).json", maxAge: maxAge, isUsable: noError),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let results = json["idlookup"] as? [[String: Any]] {
+            page = results.lazy.compactMap { ($0["title"] as? [String: Any])?["Page"] as? String }.first
+        }
+        if page == nil, let title, !title.isEmpty,
+           let data = try await fetch(url(["action": "query", "list": "search", "srsearch": title, "srlimit": "5"]), cacheName: "\(cache)-search-\(slug(title)).json", maxAge: maxAge, isUsable: noError),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let hits = (json["query"] as? [String: Any])?["search"] as? [[String: Any]] {
+            page = hits.compactMap { $0["title"] as? String }
+                .map { ($0, TitleMatcher.score($0, title)) }
+                .filter { $0.1 >= 0.85 }
+                .max { $0.1 < $1.1 }?.0
+        }
+        guard let page,
+              let data = try await fetch(url(["action": "parse", "page": page, "prop": "wikitext", "redirects": "1"]), cacheName: "\(cache)-page-\(slug(page)).json", maxAge: maxAge, isUsable: noError),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let parsed = json["parse"] as? [String: Any], let wikitext = parsed["wikitext"] as? String else { return nil }
+        // A page found by title has to be the same Steam app, when both sides know it.
+        if let steamAppID, let infobox = WikiText.template("Infobox game", in: wikitext), let ids = infobox["steam appid"], !ids.isEmpty,
+           !ids.split(separator: ",").contains(where: { $0.trimmingCharacters(in: .whitespaces) == String(steamAppID) }) {
+            return nil
+        }
+        return ((parsed["title"] as? String) ?? page, wikitext)
     }
 
     // MARK: ProtonDB

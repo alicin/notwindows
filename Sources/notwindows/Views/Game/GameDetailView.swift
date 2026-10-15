@@ -50,7 +50,7 @@ struct GameDetailView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
-                        GameHeaderView(game: game, report: report, topBleed: topInset, showWinetricks: actions.showWinetricks,
+                        GameHeaderView(game: game, report: headerReport, topBleed: topInset, showWinetricks: actions.showWinetricks,
                                        showLog: actions.showLog, showCompat: { library.compatSheetGameID = gameID })
                             .background { metric { PageMetrics(headerTop: $0.minY, headerHeight: $0.height) } }
                             .id(Self.topAnchor)
@@ -127,6 +127,14 @@ struct GameDetailView: View {
                 CompatSheet(gameID: gameID)
             }
         }
+    }
+
+    /// The executable's report, with the engine Smart Setup learned elsewhere (PCGamingWiki) when the file didn't show it.
+    private var headerReport: ExecutableReport? {
+        guard var report, report.engine == nil, let learned = library.compatReports[gameID]?.executable, learned.engine != nil else { return report }
+        report.engine = learned.engine
+        report.engineDetail = learned.engineDetail
+        return report
     }
 
     /// Lines the top of a tab's content up with the bottom of the pinned tab strip, rather than tucking it beneath.

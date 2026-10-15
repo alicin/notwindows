@@ -9,6 +9,7 @@ enum DebugSnapshots {
     static var tabHandler: ((String) -> Void)?
     static var openSettings: (() -> Void)?
     static var winetricksHandler: ((String) -> Void)?
+    static var sheetHandler: ((String) -> Void)?
 
     static func install(library: GameLibrary, navigation: AppNavigation) {
         DistributedNotificationCenter.default().addObserver(forName: .init("com.bunniesinc.notwindows.debug"), object: nil, queue: .main) { note in
@@ -82,6 +83,8 @@ enum DebugSnapshots {
             }
         case "wt":
             winetricksHandler?(argument)
+        case "sheet":
+            sheetHandler?(argument)
         case "steamsync":
             library.syncAllSteamLibraries()
         case "settings":

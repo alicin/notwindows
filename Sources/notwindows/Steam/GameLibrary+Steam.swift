@@ -38,8 +38,10 @@ extension GameLibrary {
         let prefix = launcher.prefixURL
         Task.detached(priority: .utility) {
             let apps = SteamLibraryScanner.installedApps(in: prefix).filter(\.isFullyInstalled)
+            let appInfo = SteamAppInfo.file(inPrefix: prefix).map { SteamAppInfo.apps(Set(apps.map(\.appID)), in: $0) } ?? [:]
             let executables = apps.map { app in
-                (app, SteamLibraryScanner.mainExecutable(in: app.installDirectory, name: app.name))
+                (app, SteamLibraryScanner.officialExecutable(of: app, appInfo: appInfo[app.appID])
+                    ?? SteamLibraryScanner.mainExecutable(in: app.installDirectory, name: app.name))
             }
             await MainActor.run { self.applySteamScan(executables, launcherID: launcherID, announce: announce) }
         }
@@ -145,8 +147,9 @@ extension GameLibrary {
     /// Does what Steam does before it first starts a game: its installscript.vdf's registry keys and redistributables.
     /// Bethesda's launchers, for one, say the game isn't installed without the key.
     func applySteamInstallScript(for game: Game, session: WineSession) async {
+        let appInfo = game.steamAppID.flatMap { id in SteamAppInfo.file(inPrefix: game.prefixURL).flatMap { SteamAppInfo.apps([id], in: $0)[id] } }
         guard let folder = game.installDirectory.map({ URL(fileURLWithPath: $0, isDirectory: true) }),
-              let file = SteamInstallScript.find(in: folder),
+              let file = appInfo.flatMap(SteamAppInfo.installScript).flatMap(game.installFile) ?? SteamInstallScript.find(in: folder),
               let text = try? String(contentsOf: file, encoding: .utf8),
               let windowsFolder = SteamLibraryScanner.windowsPath(of: folder, prefix: game.prefixURL) else { return }
         let script = SteamInstallScript(text, installDirectory: folder, windowsInstallDirectory: windowsFolder,

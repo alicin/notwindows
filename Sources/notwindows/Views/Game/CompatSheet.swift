@@ -11,6 +11,8 @@ struct CompatSheet: View {
     @State private var seededFor: Date?
     @State private var installingEngines: Set<EngineChoice> = []
 
+    private static let endAnchor = "end"
+
     private var game: Game? { library.game(gameID) }
     private var report: CompatReport? { library.compatReports[gameID] }
     private var isLoading: Bool { library.compatLoading.contains(gameID) }
@@ -27,7 +29,7 @@ struct CompatSheet: View {
                 } else {
                     VStack(spacing: 14) {
                         ProgressView().controlSize(.large)
-                        Text("Scanning the executable and checking the Mac rules, umu-protonfixes, Lutris and ProtonDB…")
+                        Text("Scanning the executable and checking the Mac rules, umu-protonfixes, Lutris, ProtonDB and the gaming wikis…")
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -123,75 +125,81 @@ struct CompatSheet: View {
     private func content(_ report: CompatReport) -> some View {
         let groups = Dictionary(grouping: report.suggestions, by: \.source)
         let order: [CompatSource] = report.suggestions.map(\.source).reduce(into: []) { if !$0.contains($1) { $0.append($1) } }
-        List {
-            ForEach(report.warnings, id: \.self) { warning in
-                Label(warning, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .listRowSeparator(.hidden)
-            }
-            if report.suggestions.isEmpty {
-                ContentUnavailableView("Nothing to change", systemImage: "checkmark.seal",
-                                       description: Text("No fixes are known for this game and the defaults already fit what the executable uses."))
-            }
-            ForEach(order, id: \.self) { source in
-                Section {
-                    let state = state
-                    ForEach(groups[source] ?? []) { suggestion in
-                        SuggestionRow(
-                            suggestion: suggestion,
-                            isSatisfied: game.map { suggestion.action.isSatisfied(by: $0, state: state) } ?? false,
-                            isAvailable: suggestion.action.isAvailable(state: state),
-                            detail: game.flatMap { suggestion.action.detail(for: $0, state: state) },
-                            isOn: Binding(get: { selected.contains(suggestion.id) },
-                                          set: { if $0 { selected.insert(suggestion.id) } else { selected.remove(suggestion.id) } })
-                        ) {
-                            if case .engine(let choice) = suggestion.action, !suggestion.action.isAvailable(state: state) {
-                                installButton(choice, for: suggestion)
+        ScrollViewReader { proxy in
+            List {
+                ForEach(report.warnings, id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .listRowSeparator(.hidden)
+                }
+                if report.suggestions.isEmpty {
+                    ContentUnavailableView("Nothing to change", systemImage: "checkmark.seal",
+                                           description: Text("No fixes are known for this game and the defaults already fit what the executable uses."))
+                }
+                ForEach(order, id: \.self) { source in
+                    Section {
+                        let state = state
+                        ForEach(groups[source] ?? []) { suggestion in
+                            SuggestionRow(
+                                suggestion: suggestion,
+                                isSatisfied: game.map { suggestion.action.isSatisfied(by: $0, state: state) } ?? false,
+                                isAvailable: suggestion.action.isAvailable(state: state),
+                                detail: game.flatMap { suggestion.action.detail(for: $0, state: state) },
+                                isOn: Binding(get: { selected.contains(suggestion.id) },
+                                              set: { if $0 { selected.insert(suggestion.id) } else { selected.remove(suggestion.id) } })
+                            ) {
+                                if case .engine(let choice) = suggestion.action, !suggestion.action.isAvailable(state: state) {
+                                    installButton(choice, for: suggestion)
+                                }
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Text(sourceTitle(source, report: report))
+                            if case .protonFixes(let file) = source {
+                                Text(file).font(.caption.monospaced()).foregroundStyle(.secondary)
                             }
                         }
                     }
-                } header: {
-                    HStack {
-                        Text(sourceTitle(source, report: report))
-                        if case .protonFixes(let file) = source {
-                            Text(file).font(.caption.monospaced()).foregroundStyle(.secondary)
-                        }
-                    }
                 }
-            }
-            let info = report.notes.filter { $0.kind == .info }
-            if !info.isEmpty {
-                Section("Good to know") {
-                    ForEach(info) { note in
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(note.text).textSelection(.enabled)
-                                Text(sourceTitle(note.source, report: report)).font(.caption).foregroundStyle(.secondary)
+                let info = report.notes.filter { $0.kind == .info }
+                if !info.isEmpty {
+                    Section("Good to know") {
+                        ForEach(info) { note in
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(note.text).textSelection(.enabled)
+                                    Text(sourceTitle(note.source, report: report)).font(.caption).foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "info.circle").foregroundStyle(.secondary)
                             }
-                        } icon: {
-                            Image(systemName: "info.circle").foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-            }
-            let untranslated = report.notes.filter { $0.kind == .untranslated }
-            if !untranslated.isEmpty {
-                Section {
-                    DisclosureGroup("\(untranslated.count) part\(untranslated.count == 1 ? "" : "s") of the fix can't be applied on macOS") {
-                        ForEach(untranslated) { note in
-                            Text(note.text).font(.callout.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                            .padding(.vertical, 2)
                         }
                     }
                 }
-            }
-            if !report.errors.isEmpty {
-                Section("Couldn't reach") {
-                    ForEach(report.errors, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary) }
+                let untranslated = report.notes.filter { $0.kind == .untranslated }
+                if !untranslated.isEmpty {
+                    Section {
+                        DisclosureGroup("\(untranslated.count) part\(untranslated.count == 1 ? "" : "s") of the fix can't be applied on macOS") {
+                            ForEach(untranslated) { note in
+                                Text(note.text).font(.callout.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                        }
+                    }
                 }
+                if !report.errors.isEmpty {
+                    Section("Couldn't reach") {
+                        ForEach(report.errors, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary) }
+                    }
+                }
+                Color.clear.frame(height: 1).listRowSeparator(.hidden).id(Self.endAnchor)
             }
+            .listStyle(.inset)
+            #if DEBUG || DEBUG_HOOKS
+            .onAppear { DebugSnapshots.sheetHandler = { _ in proxy.scrollTo(Self.endAnchor, anchor: .bottom) } }
+            #endif
         }
-        .listStyle(.inset)
     }
 
     @ViewBuilder
@@ -231,7 +239,7 @@ struct CompatSheet: View {
         let actionable = report?.suggestions.filter { selected.contains($0.id) && $0.action.isAvailable(state: state) } ?? []
         let installs = actionable.filter(\.action.needsInstall).count
         return HStack {
-            Text("Sources: the game's executable, [Mac rules](https://github.com/alicin/notwindows/blob/main/Resources/mac-rules.json), [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net) and [ProtonDB](https://www.protondb.com).")
+            Text("Sources: the game's executable, Steam, [Mac rules](https://github.com/alicin/notwindows/blob/main/Resources/mac-rules.json), [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net), [ProtonDB](https://www.protondb.com), [PCGamingWiki](https://www.pcgamingwiki.com) and [AppleGamingWiki](https://www.applegamingwiki.com).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()

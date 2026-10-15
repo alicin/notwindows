@@ -288,6 +288,10 @@ enum CompatSource: Hashable {
     case macRule(String)
     case protonFixes(file: String)
     case lutris(slug: String)
+    /// The Windows Steam client's launch options for the game.
+    case steamAppInfo
+    case pcGamingWiki(String)
+    case appleGamingWiki(String)
 
     var title: String {
         switch self {
@@ -296,6 +300,9 @@ enum CompatSource: Hashable {
         case .macRule(let name): "Mac rules: \(name)"
         case .protonFixes: "umu-protonfixes"
         case .lutris(let slug): "Lutris installer (\(slug))"
+        case .steamAppInfo: "Steam's launch options"
+        case .pcGamingWiki(let page): "PCGamingWiki: \(page)"
+        case .appleGamingWiki(let page): "AppleGamingWiki: \(page)"
         }
     }
 }
