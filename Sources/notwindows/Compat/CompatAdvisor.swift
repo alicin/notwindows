@@ -152,6 +152,11 @@ enum CompatAdvisor {
         } catch {
             report.errors.append("AppleGamingWiki: \(error.localizedDescription)")
         }
+        do {
+            report.communitySetups = try await sources.communitySetups(steamAppID: appID, executable: executable.lastPathComponent)
+        } catch {
+            report.errors.append("Community setups: \(error.localizedDescription)")
+        }
 
         var naming: [CompatSuggestion] = []
         if let match = report.match, match.title != game.name {

@@ -345,6 +345,7 @@ struct CompatReport {
     var protonDBTier: String?
     var suggestions: [CompatSuggestion] = []
     var notes: [CompatNote] = []
+    var communitySetups: [CommunitySetups.Setup] = []
     var warnings: [String] = []
     var errors: [String] = []
 

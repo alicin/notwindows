@@ -166,7 +166,17 @@ struct CompatSheet: View {
                         }
                     }
                 }
-                let info = report.notes.filter { $0.kind == .info }
+                if !report.communitySetups.isEmpty, let game {
+                Section("Shared by other players") {
+                    ForEach(report.communitySetups) { setup in
+                        CommunitySetupRow(setup: setup, isInUse: setup.shared.settings.comparable == game.settings.comparable) {
+                            SettingsTransfer.apply(setup.shared, to: game, library: library)
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            let info = report.notes.filter { $0.kind == .info }
                 if !info.isEmpty {
                     Section("Good to know") {
                         ForEach(info) { note in
@@ -264,7 +274,7 @@ struct CompatSheet: View {
         let actionable = report == nil ? [] : suggestions.filter { selected.contains($0.id) && $0.action.isAvailable(state: state) }
         let installs = actionable.filter(\.action.needsInstall).count
         return HStack {
-            Text("Sources: the game's executable, Steam, [Mac rules](https://github.com/alicin/notwindows/blob/main/Resources/mac-rules.json), [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net), [ProtonDB](https://www.protondb.com), [PCGamingWiki](https://www.pcgamingwiki.com) and [AppleGamingWiki](https://www.applegamingwiki.com).")
+            Text("Sources: the game's executable, Steam, [Mac rules](https://github.com/alicin/notwindows/blob/main/Resources/mac-rules.json), [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net), [ProtonDB](https://www.protondb.com), [PCGamingWiki](https://www.pcgamingwiki.com), [AppleGamingWiki](https://www.applegamingwiki.com) and [setups players shared](https://github.com/alicin/notwindows/tree/main/community).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -287,6 +297,46 @@ struct CompatSheet: View {
         guard let report, let game else { return }
         let state = state
         selected = Set(suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: state) && $0.action.isAvailable(state: state) }.map(\.id))
+    }
+}
+
+private struct CommunitySetupRow: View {
+    let setup: CommunitySetups.Setup
+    let isInUse: Bool
+    let apply: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "person.2.fill").foregroundStyle(.secondary).frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(setup.shared.summary.isEmpty ? setup.shared.game : setup.shared.summary)
+                if let note = setup.shared.note { Text(note).font(.caption).foregroundStyle(.secondary) }
+                Text(changes).font(.caption).foregroundStyle(.tertiary)
+            }
+            Spacer()
+            if isInUse {
+                Text("In use")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Color.green.opacity(0.15), in: Capsule())
+                    .foregroundStyle(.green)
+            } else {
+                Button("Apply", action: apply).controlSize(.small)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    /// What the setup brings beyond the defaults, in a few words.
+    private var changes: String {
+        let s = setup.shared.settings
+        var parts = [s.direct3DBackend.shortTitle, s.direct3D9Backend == .d9vk ? "D9VK" : "WineD3D"]
+        if let engine = setup.shared.engine { parts.insert(Engine.displayName(for: engine), at: 0) }
+        if s.rosettaX87 { parts.append("rosettax87") }
+        if !s.dllOverrides.isEmpty { parts.append("\(s.dllOverrides.count) DLL override\(s.dllOverrides.count == 1 ? "" : "s")") }
+        if !s.iniEdits.isEmpty { parts.append("\(s.iniEdits.count) .ini change\(s.iniEdits.count == 1 ? "" : "s")") }
+        if !setup.shared.winetricks.isEmpty { parts.append(setup.shared.winetricks.joined(separator: ", ")) }
+        return parts.joined(separator: " · ")
     }
 }
 

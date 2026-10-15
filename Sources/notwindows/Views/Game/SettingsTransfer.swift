@@ -4,17 +4,50 @@ import AppKit
 @MainActor
 enum SettingsTransfer {
     static func export(_ game: Game, library: GameLibrary) {
-        guard let shared = library.sharedSettings(of: game.id) else { return }
+        guard library.game(game.id) != nil else { return }
         let panel = NSSavePanel()
-        panel.message = "Export \(game.name)'s settings so someone else can import them."
+        panel.message = "Export \(game.name)'s settings so someone else can import them. Your Mac's model, chip and macOS version go with them."
         panel.nameFieldStringValue = "\(game.name).\(SharedSettings.fileExtension)"
         panel.allowedContentTypes = [.notwindowsSettings]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let note = NSTextField(string: "")
+        note.placeholderString = "Optional note, e.g. “Smooth at 1920x1243, 60 fps”"
+        note.frame = NSRect(x: 0, y: 0, width: 420, height: 22)
+        let label = NSTextField(labelWithString: "Note:")
+        let accessory = NSStackView(views: [label, note])
+        accessory.edgeInsets = NSEdgeInsets(top: 10, left: 20, bottom: 10, right: 20)
+        panel.accessoryView = accessory
+        guard panel.runModal() == .OK, let url = panel.url,
+              let shared = library.sharedSettings(of: game.id, note: note.stringValue) else { return }
         do {
             try shared.encoded().write(to: url, options: .atomic)
             library.show(Toast(symbol: "square.and.arrow.up", title: "Settings exported", detail: url.lastPathComponent), for: game.id)
         } catch {
             library.report("Couldn't export the settings", error)
+        }
+    }
+
+    /// Opens GitHub with the setup filled in as a new file in community/setups, to be proposed as a pull request.
+    static func shareWithCommunity(_ game: Game, library: GameLibrary) {
+        let machine = SharedSettings.Machine.current
+        let alert = NSAlert()
+        alert.messageText = "Share \(game.name)'s setup with other players?"
+        alert.informativeText = "GitHub opens with the setup filled in, ready to propose for the shared list (you need a GitHub account). "
+            + "It holds the settings, launch arguments, engine, Winetricks components and .ini changes, and this Mac's model, chip and macOS version"
+            + " (\([machine.chip ?? machine.model, machine.macOS.map { "macOS \($0)" }].compactMap { $0 }.joined(separator: ", "))). Paths and play history stay here."
+            + (game.isKnownGood ? "" : "\n\nThis setup hasn't had a long session yet. Setups that ran well for a while help others most.")
+        let note = NSTextField(string: "")
+        note.placeholderString = "Optional note, e.g. “Smooth at 1920x1243, 60 fps”"
+        note.frame = NSRect(x: 0, y: 0, width: 300, height: 22)
+        alert.accessoryView = note
+        alert.addButton(withTitle: "Open GitHub")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = note
+        guard alert.runModal() == .alertFirstButtonReturn, let shared = library.sharedSettings(of: game.id, note: note.stringValue) else { return }
+        do {
+            guard let url = try CommunitySetups.submissionURL(for: shared) else { return }
+            NSWorkspace.shared.open(url)
+        } catch {
+            library.report("Couldn't prepare the setup", error)
         }
     }
 
@@ -60,7 +93,7 @@ enum SettingsTransfer {
         }
     }
 
-    private static func apply(_ shared: SharedSettings, to game: Game, library: GameLibrary) {
+    static func apply(_ shared: SharedSettings, to game: Game, library: GameLibrary) {
         let result = library.importSettings(shared, into: game.id)
         let detail = result.missingEngine.map { "\($0) isn't installed, so the engine stays as it was" } ?? "From \(shared.game)"
         library.show(Toast(symbol: "square.and.arrow.down", title: "Settings imported", detail: detail), for: game.id)

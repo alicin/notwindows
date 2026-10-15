@@ -416,8 +416,13 @@ struct GameSettingsPage: View {
         IniEditsCard(gameID: gameID)
 
         SettingsCard(title: "Share settings", symbol: "square.and.arrow.up.fill", tint: .blue, subtitle: "Pass this setup on to someone else",
-                     footer: "A settings file carries the renderer, sync, display, input and system settings, launch arguments, the engine and the Winetricks components installed here. Paths and play history stay on this Mac.") {
+                     footer: "A settings file carries the renderer, sync, display, input and system settings, launch arguments, the engine, .ini changes, the Winetricks components installed here, and this Mac's model, chip and macOS version. Paths and play history stay on this Mac.") {
         } content: {
+            SettingRow(title: "Share with the community", detail: "Proposes this setup on GitHub, where Smart Setup lists it for other players of the game.") {
+                Button("Share…") { SettingsTransfer.shareWithCommunity(game, library: library) }
+                    .disabled(game.executablePath.isEmpty)
+            }
+            RowDivider()
             SettingRow(title: "Export settings", detail: "Saves a .notwindows file anyone can import.") {
                 Button("Export…") { SettingsTransfer.export(game, library: library) }
             }

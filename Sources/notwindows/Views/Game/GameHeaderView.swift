@@ -89,6 +89,10 @@ struct GameHeaderView: View {
                             Button("Import Settings…", systemImage: "square.and.arrow.down") {
                                 SettingsTransfer.chooseAndImport(into: game, library: library)
                             }
+                            Button("Share with the Community…", systemImage: "person.2") {
+                                SettingsTransfer.shareWithCommunity(game, library: library)
+                            }
+                            .disabled(game.executablePath.isEmpty)
                         }
                         Section {
                             Button("Open C: Drive", systemImage: "folder") { NSWorkspace.shared.open(game.driveC) }

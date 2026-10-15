@@ -276,6 +276,23 @@ actor CompatSources {
         return ((parsed["title"] as? String) ?? page, wikitext)
     }
 
+    // MARK: Community setups
+
+    /// Shared setups for a game. The repository's tree comes from GitHub's API once a day, which keeps well inside its
+    /// hourly limit; the files themselves never change for a given hash, so they're kept for good.
+    func communitySetups(steamAppID: Int?, executable: String?) async throws -> [CommunitySetups.Setup] {
+        let tree = URL(string: "https://api.github.com/repos/\(CommunitySetups.repository)/git/trees/\(CommunitySetups.branch)?recursive=1")!
+        guard let data = try await fetch(tree, cacheName: "community-tree.json", maxAge: 86_400) else { return [] }
+        var setups: [CommunitySetups.Setup] = []
+        for (path, sha) in CommunitySetups.paths(inTree: data, steamAppID: steamAppID, executable: executable) {
+            guard let url = CommunitySetups.rawURL(path),
+                  let file = try await fetch(url, cacheName: "community-\(sha).notwindows", maxAge: 10 * 365 * 86_400),
+                  let shared = try? SharedSettings.decode(file) else { continue }
+            setups.append(CommunitySetups.Setup(path: path, shared: shared))
+        }
+        return setups
+    }
+
     // MARK: ProtonDB
 
     func protonDBTier(steamAppID: Int) async -> String? {
