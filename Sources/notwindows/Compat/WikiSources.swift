@@ -135,7 +135,7 @@ struct MacCompatibility: Equatable {
     var page: String
     var entries: [Entry]
 
-    /// Methods worth showing next to notwindows, in this order: a native or Apple Silicon build trumps everything.
+    /// Ways to play worth showing next to notwindows, a native Mac version first.
     private static let methods: [(key: String, title: String)] = [
         ("native", "Native Mac version"), ("rosetta 2", "Native Intel version (Rosetta 2)"), ("crossover", "CrossOver"),
         ("wine", "Wine"), ("whisky", "Whisky"), ("gptk", "Game Porting Toolkit"), ("porting kit", "Porting Kit"), ("cxpatcher", "CXPatcher"),

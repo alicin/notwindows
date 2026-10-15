@@ -47,6 +47,10 @@ actor CompatSources {
     private let protonFixesBase = "https://raw.githubusercontent.com/Open-Wine-Components/umu-protonfixes/master"
     private let umuDatabaseURL = URL(string: "https://raw.githubusercontent.com/Open-Wine-Components/umu-database/main/umu-database.csv")!
     private var umuEntries: [UMUEntry]?
+    /// When each rate-limited host may next be asked. PCGamingWiki blocks an address for a minute past 60 requests a
+    /// minute, and a Steam library sync can look up dozens of games at once.
+    private var nextRequest: [String: Date] = [:]
+    private static let pacedHosts: [String: TimeInterval] = ["www.pcgamingwiki.com": 1.2, "www.applegamingwiki.com": 1.2, "api.github.com": 1.2]
 
     private var cacheDirectory: URL {
         let url = Paths.root.appendingPathComponent("Cache/compat", isDirectory: true)
@@ -56,14 +60,19 @@ actor CompatSources {
 
     // MARK: Cached fetch
 
-    /// Returns cached data younger than `maxAge`, otherwise fetches. A 404 is cached as an empty body, and so is a
-    /// response `isUsable` turns down.
+    /// Returns cached data younger than `maxAge`, otherwise fetches. A 404 is cached as an empty body; a response
+    /// `isUsable` turns down isn't cached, so it's asked for again next time.
     private func fetch(_ url: URL, cacheName: String, maxAge: TimeInterval = 3 * 86_400, isUsable: ((Data) -> Bool)? = nil) async throws -> Data? {
         let file = cacheDirectory.appendingPathComponent(cacheName)
         if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
            let modified = attributes[.modificationDate] as? Date, Date().timeIntervalSince(modified) < maxAge,
            let data = try? Data(contentsOf: file) {
             return data.isEmpty ? nil : data
+        }
+        if let host = url.host(), let interval = Self.pacedHosts[host] {
+            let slot = max(Date(), nextRequest[host] ?? .distantPast)
+            nextRequest[host] = slot.addingTimeInterval(interval)
+            if slot.timeIntervalSinceNow > 0 { try? await Task.sleep(for: .seconds(slot.timeIntervalSinceNow)) }
         }
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.setValue("notwindows/0.1 (+https://github.com/alicin/notwindows)", forHTTPHeaderField: "User-Agent")
