@@ -293,7 +293,7 @@ final class GameLibrary {
     }
 
     func analyzeCompatibility(_ id: UUID, match: CompatMatch? = nil, autoApply: Bool = false) async {
-        guard let game = game(id), !compatLoading.contains(id) else { return }
+        guard game(id) != nil, !compatLoading.contains(id) else { return }
         compatLoading.insert(id)
         defer { compatLoading.remove(id) }
 
@@ -301,23 +301,28 @@ final class GameLibrary {
            let text = try? String(contentsOf: script, encoding: .utf8) {
             knownWinetricksVerbs = Set(WinetricksCatalog.parse(text).map(\.name))
         }
-        let steamMatch = game.steamAppID.map { CompatMatch(title: game.name, steamAppID: $0, umuID: nil, store: "steam") }
-        let engine = engines.engine(named: launcher(of: game)?.engineName ?? game.engineName)
-        let report = await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match ?? steamMatch,
-                                                 supportsRosettaX87: engine?.capabilities.rosettaX87 ?? true)
-        compatReports[id] = report
-        guard autoApply else { return }
+        var applied = 0
+        var report = CompatReport()
+        // A second pass when the first switched executables, since the new one can need different fixes.
+        for _ in 0..<2 {
+            guard let game = game(id) else { return }
+            report = await analyze(game, match: match)
+            compatReports[id] = report
+            guard autoApply else { return }
+            let state = compatState(id)
+            let settings = report.suggestions.filter {
+                $0.recommended && !$0.action.isSatisfied(by: game, state: state) && canApplyUnattended($0.action, to: game, state: state)
+            }
+            if !settings.isEmpty { applyCompat(settings, to: id, reanalyze: false) }
+            applied += settings.count
+            if self.game(id)?.executablePath == game.executablePath { break }
+        }
 
-        let state = compatState(id)
-        let current = self.game(id) ?? game
-        let pending = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: current, state: state) }
-        let settings = pending.filter { canApplyUnattended($0.action, to: current, state: state) }
-        let installs = pending.filter { !canApplyUnattended($0.action, to: current, state: state) }
-        if !settings.isEmpty { applyCompat(settings, to: id) }
-
+        guard let game = game(id) else { return }
+        let toReview = report.suggestions.filter { $0.recommended && !$0.action.isSatisfied(by: game, state: compatState(id)) }.count
         var parts: [String] = []
-        if !settings.isEmpty { parts.append("applied \(settings.count) setting\(settings.count == 1 ? "" : "s")") }
-        if !installs.isEmpty { parts.append("\(installs.count) to review") }
+        if applied > 0 { parts.append("applied \(applied) setting\(applied == 1 ? "" : "s")") }
+        if toReview > 0 { parts.append("\(toReview) to review") }
         if let warning = report.warnings.first, report.executable?.antiCheat.isEmpty == false {
             show(Toast(symbol: "exclamationmark.shield.fill", title: "\(game.name): anti-cheat detected", detail: warning, tint: .orange), for: id)
         } else if !parts.isEmpty {
@@ -326,9 +331,17 @@ final class GameLibrary {
         }
     }
 
+    private func analyze(_ game: Game, match: CompatMatch?) async -> CompatReport {
+        let steamMatch = game.steamAppID.map { CompatMatch(title: game.name, steamAppID: $0, umuID: nil, store: "steam") }
+        let engine = engines.engine(named: launcher(of: game)?.engineName ?? game.engineName)
+        return await CompatAdvisor.analyze(game: game, knownVerbs: knownWinetricksVerbs, preferredMatch: match ?? steamMatch,
+                                           supportsRosettaX87: engine?.capabilities.rosettaX87 ?? true)
+    }
+
     /// Applies setting changes in one save and queues any winetricks installs.
-    func applyCompat(_ suggestions: [CompatSuggestion], to id: UUID) {
+    func applyCompat(_ suggestions: [CompatSuggestion], to id: UUID, reanalyze: Bool = true) {
         let state = compatState(id)
+        let executable = game(id)?.executablePath
         let changes = suggestions.filter { !$0.action.needsInstall && $0.action.isAvailable(state: state) }
         if !changes.isEmpty {
             update(id) { game in
@@ -340,6 +353,9 @@ final class GameLibrary {
             if case .winetricks(let verb) = suggestion.action { return verb } else { return nil }
         }
         if !verbs.isEmpty { startWinetricks(verbs, force: false, unattended: true, for: id) }
+        if reanalyze, game(id)?.executablePath != executable {
+            Task { await analyzeCompatibility(id, match: compatReports[id]?.match) }
+        }
     }
 
     /// Writes the game's pending .ini changes into files that exist by now.

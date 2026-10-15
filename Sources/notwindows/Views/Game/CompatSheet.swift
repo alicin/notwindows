@@ -27,7 +27,7 @@ struct CompatSheet: View {
                 } else {
                     VStack(spacing: 14) {
                         ProgressView().controlSize(.large)
-                        Text("Scanning the executable and checking umu-protonfixes, Lutris and ProtonDB…")
+                        Text("Scanning the executable and checking the Mac rules, umu-protonfixes, Lutris and ProtonDB…")
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -231,7 +231,7 @@ struct CompatSheet: View {
         let actionable = report?.suggestions.filter { selected.contains($0.id) && $0.action.isAvailable(state: state) } ?? []
         let installs = actionable.filter(\.action.needsInstall).count
         return HStack {
-            Text("Sources: the game's executable, [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net) and [ProtonDB](https://www.protondb.com).")
+            Text("Sources: the game's executable, [Mac rules](https://github.com/alicin/notwindows/blob/main/Resources/mac-rules.json), [umu-protonfixes](https://github.com/Open-Wine-Components/umu-protonfixes), [Lutris](https://lutris.net) and [ProtonDB](https://www.protondb.com).")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -278,7 +278,7 @@ private struct SuggestionRow<Accessory: View>: View {
                 Text(suggestion.action.title)
                 Text(suggestion.reason).font(.caption).foregroundStyle(.secondary)
                 if let detail {
-                    Text(detail).font(.caption).foregroundStyle(.tertiary).textSelection(.enabled)
+                    Text(detail).font(.caption).foregroundStyle(.tertiary).lineLimit(2).truncationMode(.middle).help(detail)
                 }
             }
             Spacer()

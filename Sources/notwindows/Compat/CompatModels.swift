@@ -218,16 +218,17 @@ enum CompatAction: Hashable {
     /// What the change touches, when the title doesn't say.
     func detail(for game: Game, state: CompatState) -> String? {
         switch self {
-        case .executable:
+        case .executable where !isSatisfied(by: game, state: state):
             return game.executableURL.map { "Instead of \($0.lastPathComponent)" }
         case .engine(let choice) where !isAvailable(state: state):
             return "\(choice.title) isn't installed yet."
         case .iniSetting(let ini):
             guard let file = game.path(forWindowsPath: ini.file) else { return nil }
-            let path = (file.path as NSString).abbreviatingWithTildeInPath
-            let value = state.expand(ini.value) == ini.value ? "" : " = \(state.expand(ini.value))"
-            return file.exists ? "[\(ini.section)] \(ini.key)\(value) in \(path)"
-                : "\(path) doesn't exist yet; the game creates it on its first run, and the change is made before the next one."
+            // The prefix's Documents is a link to the Mac's, which makes for a much shorter path.
+            let path = (file.resolvingSymlinksInPath().path as NSString).abbreviatingWithTildeInPath
+            let value = state.expand(ini.value) == ini.value ? "" : "\(state.expand(ini.value)), "
+            return file.exists ? "\(value)[\(ini.section)] in \(path)"
+                : "\(path) doesn't exist yet. The game creates it on its first run, and the change is made before the next one."
         default:
             return nil
         }
@@ -283,6 +284,8 @@ enum CompatAction: Hashable {
 enum CompatSource: Hashable {
     case executable
     case macRules
+    /// A rule from the Mac rules database, by its name.
+    case macRule(String)
     case protonFixes(file: String)
     case lutris(slug: String)
 
@@ -290,6 +293,7 @@ enum CompatSource: Hashable {
         switch self {
         case .executable: "Detected from the executable"
         case .macRules: "macOS recommendations"
+        case .macRule(let name): "Mac rules: \(name)"
         case .protonFixes: "umu-protonfixes"
         case .lutris(let slug): "Lutris installer (\(slug))"
         }

@@ -242,11 +242,6 @@ enum MacRules {
             add(.cncDDraw(true), "Imports ddraw.dll. cnc-ddraw fixes most DirectDraw games.")
         }
 
-        if WineRosetta.isLegacyWoW(executable) {
-            add(.wineRosetta(true), "32-bit World of Warcraft needs instructions Rosetta 2 can't run.", source: .macRules)
-            add(.direct3D9(.d9vk), "WineRosetta hands Direct3D 9 to D9VK.", source: .macRules)
-        }
-
         if let x87 = report.x87, context.supportsRosettaX87 {
             let measured = "\(Int((x87.share * 100).rounded()))% of its floating-point instructions are x87"
             switch x87.level {

@@ -84,6 +84,16 @@ actor CompatSources {
         }
     }
 
+    // MARK: Mac rules
+
+    /// The newer of the bundled rules and the latest on GitHub. Offline, the bundled copy is enough.
+    func macRules() async -> MacRuleDatabase? {
+        let bundled = MacRuleDatabase.bundled
+        guard let data = try? await fetch(MacRuleDatabase.remoteURL, cacheName: "mac-rules.json", maxAge: 86_400),
+              let remote = try? MacRuleDatabase.decode(data), remote.revision > bundled?.revision ?? -1 else { return bundled }
+        return remote
+    }
+
     // MARK: umu-database
 
     func umuDatabase() async throws -> [UMUEntry] {

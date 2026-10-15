@@ -1,0 +1,85 @@
+{
+  "format": 1,
+  "revision": 1,
+  "rules": [
+    {
+      "name": "Fallout: New Vegas",
+      "match": { "steamAppIDs": [22380], "executables": ["FalloutNV.exe", "FalloutNVLauncher.exe"] },
+      "variables": {
+        "GAME_INI": "%DOCUMENTS%\\My Games\\FalloutNV\\Fallout.ini",
+        "PREFS_INI": "%DOCUMENTS%\\My Games\\FalloutNV\\FalloutPrefs.ini"
+      },
+      "actions": [
+        { "executable": "FalloutNV.exe", "reason": "FalloutNVLauncher.exe reruns hardware detection on every start and resets FalloutPrefs.ini, e.g. to a 1024x663 window with 4x anti-aliasing. The game runs fine without it." },
+        { "rosettaX87": true, "reason": "A 32-bit game whose math runs on x87, which Rosetta 2 emulates slowly: around 4 fps without rosettax87." },
+        { "retina": false, "reason": "The resolution below is the display's size in points, which is what the game gets with Retina mode off." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "iSize W", "value": "%SCREEN_WIDTH%" }, "reason": "Full screen at the display's own size. Scaled sizes like 1024x663 draw at twice the size, showing only the top-left quarter with doubled mouse speed." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "iSize H", "value": "%SCREEN_HEIGHT%" }, "reason": "Full screen at the display's own size." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "bFull Screen", "value": "1" }, "reason": "Full screen at the display's own size." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "iMultiSample", "value": "0" }, "reason": "Turns off the 4x anti-aliasing the launcher picks, which costs a lot of frame rate once translated to Metal." }
+      ]
+    },
+    {
+      "name": "Fallout 3",
+      "match": { "steamAppIDs": [22300, 22370], "executables": ["Fallout3.exe", "Fallout3Launcher.exe", "FalloutLauncherSteam.exe"] },
+      "variables": {
+        "GAME_INI": "%DOCUMENTS%\\My Games\\Fallout3\\Fallout.ini",
+        "PREFS_INI": "%DOCUMENTS%\\My Games\\Fallout3\\FalloutPrefs.ini"
+      },
+      "actions": [
+        { "executable": "Fallout3.exe", "reason": "Fallout 3's launcher reruns hardware detection on every start and resets FalloutPrefs.ini. The game runs fine without it." },
+        { "rosettaX87": true, "reason": "A 32-bit game whose math runs on x87, which Rosetta 2 emulates slowly." },
+        { "retina": false, "reason": "The resolution below is the display's size in points, which is what the game gets with Retina mode off." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "iSize W", "value": "%SCREEN_WIDTH%" }, "reason": "Full screen at the display's own size. Scaled sizes draw at twice the size, showing only the top-left quarter." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "iSize H", "value": "%SCREEN_HEIGHT%" }, "reason": "Full screen at the display's own size." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "bFull Screen", "value": "1" }, "reason": "Full screen at the display's own size." },
+        { "ini": { "file": "%PREFS_INI%", "section": "Display", "key": "iMultiSample", "value": "0" }, "reason": "Turns off the anti-aliasing the launcher picks, which costs a lot of frame rate once translated to Metal." }
+      ]
+    },
+    {
+      "name": "The Elder Scrolls IV: Oblivion",
+      "match": { "steamAppIDs": [22330, 900883], "executables": ["Oblivion.exe", "OblivionLauncher.exe"] },
+      "variables": {
+        "GAME_INI": "%DOCUMENTS%\\My Games\\Oblivion\\Oblivion.ini"
+      },
+      "actions": [
+        { "executable": "Oblivion.exe", "reason": "Oblivion's launcher reruns hardware detection and resets the display settings. The game runs fine without it." },
+        { "rosettaX87": true, "reason": "A 32-bit game from Visual C++'s x87 era, which Rosetta 2 emulates slowly." },
+        { "retina": false, "reason": "The resolution below is the display's size in points, which is what the game gets with Retina mode off." },
+        { "ini": { "file": "%GAME_INI%", "section": "Display", "key": "iSize W", "value": "%SCREEN_WIDTH%" }, "reason": "Full screen at the display's own size. Scaled sizes draw at twice the size, showing only the top-left quarter." },
+        { "ini": { "file": "%GAME_INI%", "section": "Display", "key": "iSize H", "value": "%SCREEN_HEIGHT%" }, "reason": "Full screen at the display's own size." },
+        { "ini": { "file": "%GAME_INI%", "section": "Display", "key": "bFull Screen", "value": "1" }, "reason": "Full screen at the display's own size." },
+        { "ini": { "file": "%GAME_INI%", "section": "Display", "key": "iMultiSample", "value": "0" }, "reason": "Turns off anti-aliasing, which costs a lot of frame rate once translated to Metal." }
+      ]
+    },
+    {
+      "name": "Gamebryo engine",
+      "match": { "engines": ["Gamebryo"] },
+      "actions": [
+        { "ini": { "file": "%GAME_INI%", "section": "General", "key": "bUseThreadedAI", "value": "1" }, "reason": "Gamebryo misbehaves with many CPU cores (it counts 10 on an M5) and stutters, freezes or crashes. Threaded AI on two hardware threads is the long-standing fix." },
+        { "ini": { "file": "%GAME_INI%", "section": "General", "key": "iNumHWThreads", "value": "2" }, "reason": "Caps the engine at two hardware threads; see above." },
+        { "dllOverride": { "name": "x3daudio1_6", "mode": "n,b" }, "reason": "CodeWeavers' Bethesda audio override: Microsoft's XAudio2 and X3DAudio from the game's DirectX setup instead of Wine's, which garble 3D sound such as voices and gunfire." },
+        { "dllOverride": { "name": "x3daudio1_7", "mode": "n,b" }, "reason": "Part of the Bethesda audio override." },
+        { "dllOverride": { "name": "xaudio2_6", "mode": "n,b" }, "reason": "Part of the Bethesda audio override." },
+        { "dllOverride": { "name": "xaudio2_7", "mode": "n,b" }, "reason": "Part of the Bethesda audio override." }
+      ]
+    },
+    {
+      "name": "World of Warcraft (32-bit clients)",
+      "match": { "executables": ["Wow.exe"], "architecture": "32-bit" },
+      "actions": [
+        { "wineRosetta": true, "reason": "1.12.1, 2.4.3 and 3.3.5a clients use instructions Rosetta 2 can't run." },
+        { "direct3D9": "d9vk", "reason": "WineRosetta hands Direct3D 9 to D9VK." },
+        { "rosettaX87": true, "reason": "The client's math runs on x87, which Rosetta 2 emulates slowly." }
+      ]
+    },
+    {
+      "name": "The Movies",
+      "match": { "executables": ["Movies.exe", "MoviesSE.exe"] },
+      "actions": [
+        { "engine": { "family": "crossOver32" }, "reason": "Runs in a 32-bit prefix, as in Lutris's installer. CrossOver's 32-bit engine makes one; a 64-bit prefix fails to start the game." },
+        { "winetricks": "wmp10", "reason": "The game plays and records its films through Windows Media Player 10's codecs." }
+      ]
+    }
+  ]
+}

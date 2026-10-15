@@ -108,6 +108,10 @@ enum CompatAdvisor {
             }
         }
 
+        let rules = Self.ruleSuggestions(await sources.macRules(), game: game, executable: executable, report: exe,
+                                         steamAppID: game.steamAppID ?? report.match?.steamAppID, context: context)
+        report.notes += rules.notes
+
         var naming: [CompatSuggestion] = []
         if let match = report.match, match.title != game.name {
             let similar = TitleMatcher.score(match.title, game.name) >= 0.95
@@ -115,8 +119,33 @@ enum CompatAdvisor {
                                            reason: similar ? "Official title from Steam." : "Matched title from Steam. Make sure it's the right game.",
                                            source: .macRules, recommended: similar))
         }
-        report.suggestions = specific + local + naming
+        // Mac rules come first: where they and a Linux fix disagree, the Mac rule wins.
+        report.suggestions = rules.suggestions + specific + local + naming
         report.deduplicate()
         return report
+    }
+
+    /// The Mac rules for a game, without changes that can't apply to it here.
+    static func ruleSuggestions(_ database: MacRuleDatabase?, game: Game, executable: URL, report: ExecutableReport, steamAppID: Int?,
+                                context: MacRules.Context) -> (suggestions: [CompatSuggestion], notes: [CompatNote]) {
+        guard let database else { return ([], []) }
+        let subject = MacRuleDatabase.Subject(steamAppID: steamAppID, executable: executable.lastPathComponent, engine: report.engine, is64Bit: report.is64Bit)
+        var notes: [CompatNote] = []
+        let suggestions = database.suggestions(for: subject).filter { suggestion in
+            switch suggestion.action {
+            case .executable(let path):
+                return game.installFile(path) != nil
+            case .engine(let choice) where game.isSteamGame:
+                notes.append(CompatNote(text: "Runs best on \(choice.title), but Steam games run on Steam's engine. Install it outside Steam to use one.",
+                                        source: suggestion.source, kind: .info))
+                return false
+            case .rosettaX87(true) where !context.supportsRosettaX87:
+                notes.append(CompatNote(text: "Runs much faster with rosettax87, which this engine can't start games through.", source: suggestion.source, kind: .info))
+                return false
+            default:
+                return true
+            }
+        }
+        return (suggestions, notes)
     }
 }
